@@ -216,6 +216,15 @@ fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()>
     let response = String::from_utf8(output.stdout)?;
     let json: serde_json::Value = serde_json::from_str(&response)?;
     
+    // Check if the response indicates no releases exist
+    if let Some(message) = json["message"].as_str() {
+        if message == "Not Found" {
+            logger.info("No releases found in the repository yet.");
+            logger.info("The self-update feature will be available once the first release is published.");
+            return Ok(());
+        }
+    }
+    
     let latest_version = json["tag_name"]
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("Could not parse latest version from GitHub API"))?;
