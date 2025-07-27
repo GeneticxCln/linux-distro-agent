@@ -1,4 +1,19 @@
-# 🐧 Linux Distribution Agent
+# Linux Distribution Agent (LDA)
+
+<div align="center">
+
+![LDA Logo](https://img.shields.io/badge/LDA-Linux%20Distribution%20Agent-blue?style=for-the-badge)
+[![Version](https://img.shields.io/badge/version-0.1.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
+[![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
+
+**A comprehensive Linux distribution management tool with custom distro building capabilities**
+
+[Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Distro Building](#-linux-distribution-builder) • [Documentation](#-documentation)
+
+</div>
+
+---
 
 <div align="center">
 
@@ -31,6 +46,31 @@ Linux Distribution Agent is a powerful, cross-platform command-line utility that
 - 📚 **Well-documented**: Comprehensive documentation and examples
 
 ## 🚀 Features
+
+### 📦 **Package Management**
+- **Unified Commands**: Works across all major Linux distributions
+- **Auto-Detection**: Automatically detects your distribution and package manager
+- **Direct Execution**: Execute commands directly or get the command string
+- **Package Search**: Search packages across different repositories
+- **Package Information**: Get detailed information about packages
+
+### 🏗️ **Linux Distribution Builder** ⭐ **NEW**
+- **Custom ISO Creation**: Build complete bootable Linux distributions
+- **Multiple Base Systems**: Support for Arch, Debian, Ubuntu, and scratch builds
+- **Desktop Environments**: GNOME, KDE, XFCE, LXDE, Mate, Cinnamon, Sway, i3
+- **Kernel Options**: Vanilla, LTS, Hardened, Real-time, or custom kernels
+- **Bootloader Support**: Syslinux, GRUB, systemd-boot, rEFInd
+- **Custom Branding**: Logos, wallpapers, themes, and color schemes
+- **Compression Options**: Gzip, XZ, Zstd, LZ4, or no compression
+- **Configuration Templates**: Generate and customize build configurations
+
+### 🔧 **System Management**
+- **Distribution Detection**: Comprehensive system information gathering
+- **Compatibility Check**: System compatibility analysis and recommendations
+- **Command History**: Track and search through command history
+- **Configuration Management**: Manage tool settings and preferences
+- **Cache System**: Efficient caching for improved performance
+- **Shell Completions**: Support for bash, zsh, fish, and PowerShell
 
 - **🔍 Distribution Detection**: Automatically detects your Linux distribution from `/etc/os-release`
 - **📦 Package Manager Support**: Supports major package managers including:
@@ -573,7 +613,87 @@ src/
 └── cache.rs          # Caching system
 ```
 
-## 🐛 Troubleshooting
+## 🏗️ Linux Distribution Builder
+
+### Quick Start
+
+```bash
+# Build a minimal distribution
+sudo lda build-distro --minimal
+
+# Generate configuration template
+lda generate-config > my-distro.toml
+
+# Edit the configuration
+nano my-distro.toml
+
+# Build with custom configuration
+sudo lda build-distro -c my-distro.toml
+```
+
+### Configuration Options
+
+```toml
+name = "MyLinux"
+version = "1.0"
+description = "A custom Linux distribution"
+architecture = "x86_64"
+base_system = "Arch"
+
+[packages]
+essential = ["base", "linux", "linux-firmware", "networkmanager"]
+desktop_environment = "Xfce"  # Options: Gnome, KDE, Xfce, LXDE, Mate, Cinnamon, Sway, I3, None
+additional_packages = ["firefox", "vim", "git"]
+
+[kernel]
+kernel_type = "Vanilla"  # Options: Vanilla, LTS, Hardened, RT, Custom("name")
+
+[bootloader]
+bootloader = "Syslinux"  # Options: Syslinux, GRUB, Systemd, rEFInd
+timeout = 30
+default_entry = "linux"
+
+[branding.colors]
+primary = "#0078d4"
+secondary = "#005a9e"
+accent = "#00bcf2"
+
+[filesystem]
+root_fs = "SquashFS"     # Options: SquashFS, Ext4, Btrfs, XFS
+compression = "Xz"       # Options: Gzip, Xz, Zstd, Lz4, None
+size_limit = 4096        # MB
+```
+
+### Advanced Building
+
+```bash
+# Custom build directories
+sudo lda build-distro \
+  --config my-distro.toml \
+  --work-dir /var/build \
+  --output-dir ~/isos
+
+# Build different base systems
+lda generate-config --template minimal > arch-minimal.toml
+# Edit to change base_system to "Debian" or "Ubuntu"
+sudo lda build-distro -c debian-distro.toml
+
+# Generate different templates
+lda generate-config --template minimal     # Minimal configuration
+lda generate-config -o desktop.toml        # Save to file
+```
+
+### Build Process
+
+The build process includes:
+
+1. **🏗️ Root Filesystem Creation** - Bootstrap base system
+2. **🐧 Kernel Installation** - Install and configure kernel
+3. **📦 Package Installation** - Install essential and additional packages  
+4. **⚙️ System Configuration** - Configure hostname, services, users
+5. **🎨 Branding Application** - Apply custom themes and branding
+6. **🥾 Bootloader Setup** - Configure bootloader and boot entries
+7. **💿 ISO Generation** - Create bootable ISO image
 
 ### Common Issues
 
