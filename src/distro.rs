@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use anyhow::Result;
-use crate::config::Config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistroInfo {
@@ -55,17 +54,6 @@ impl DistroInfo {
     }
 
     fn detect_package_manager(fields: &HashMap<String, String>) -> Option<String> {
-        // Try to load config, fall back to hardcoded values if config fails
-        let config = Config::load().ok();
-        
-        if let Some(config) = config {
-            if let Some(id) = fields.get("ID") {
-                let id_like = fields.get("ID_LIKE").map(|s| s.as_str());
-                return config.detect_package_manager(id, id_like);
-            }
-        }
-        
-        // Fallback to hardcoded detection if config system fails
         let id = fields.get("ID")?.to_lowercase();
         let id_like = fields.get("ID_LIKE").map(|s| s.to_lowercase());
 
@@ -77,6 +65,7 @@ impl DistroInfo {
             "gentoo" => Some("portage".to_string()),
             "nixos" => Some("nix".to_string()),
             "alpine" => Some("apk".to_string()),
+            "void" => Some("xbps".to_string()),
             _ => {
                 if let Some(id_like) = id_like {
                     if id_like.contains("arch") {
@@ -106,6 +95,11 @@ impl DistroInfo {
             Some("portage") => Some(format!("sudo emerge {package}")),
             Some("nix") => Some(format!("nix-env -iA nixpkgs.{package}")),
             Some("apk") => Some(format!("sudo apk add {package}")),
+            Some("xbps") => Some(format!("sudo xbps-install {package}")),
+            Some("paru") => Some(format!("paru -S {package}")),
+            Some("yay") => Some(format!("yay -S {package}")),
+            Some("flatpak") => Some(format!("flatpak install {package}")),
+            Some("snap") => Some(format!("sudo snap install {package}")),
             _ => None,
         }
     }
@@ -145,6 +139,32 @@ impl DistroInfo {
             Some("portage") => Some(format!("sudo emerge --unmerge {package}")),
             Some("nix") => Some(format!("nix-env -e {package}")),
             Some("apk") => Some(format!("sudo apk del {package}")),
+            _ => None,
+        }
+    }
+
+    pub fn get_package_list_command(&self, detailed: bool, filter: Option<&str>) -> Option<String> {
+        match self.package_manager.as_deref() {
+            Some("pacman") => Some(format!("pacman -Q{}{}", if detailed { "i" } else { "" }, filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("apt") => Some(format!("dpkg-query -l{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("dnf") => Some(format!("dnf list installed{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("zypper") => Some(format!("zypper se --installed-only{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("portage") => Some(format!("equery list{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("nix") => Some(format!("nix-env -q{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("apk") => Some(format!("apk list --installed{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            _ => None,
+        }
+    }
+
+    pub fn get_package_info_command(&self, package: &str) -> Option<String> {
+        match self.package_manager.as_deref() {
+            Some("pacman") => Some(format!("pacman -Qi {}", package)),
+            Some("apt") => Some(format!("apt show {}", package)),
+            Some("dnf") => Some(format!("dnf info {}", package)),
+            Some("zypper") => Some(format!("zypper info {}", package)),
+            Some("portage") => Some(format!("equery list {}", package)),
+            Some("nix") => Some(format!("nix-env -qaP | grep {}", package)),
+            Some("apk") => Some(format!("apk info {}", package)),
             _ => None,
         }
     }

@@ -1,7 +1,10 @@
-mod distro;
 mod config;
+mod config_manager;
+mod distro;
 mod executor;
 mod logger;
+mod history;
+mod cache;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -26,6 +29,33 @@ struct Cli {
     
     #[clap(subcommand)]
     command: Commands,
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Show current configuration
+    Show,
+    /// Edit configuration in default editor
+    Edit,
+    /// Reset configuration to defaults
+    Reset,
+    /// Set a configuration value
+    Set {
+        /// Configuration key
+        key: String,
+        /// Configuration value
+        value: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum CacheAction {
+    /// Show cache status
+    Status,
+    /// Clear all cached data
+    Clear,
+    /// Show cached entries
+    List,
 }
 
 #[derive(Subcommand)]
@@ -75,6 +105,42 @@ enum Commands {
         /// Execute the command directly (requires confirmation)
         #[clap(short, long)]
         execute: bool,
+    },
+    /// List installed packages or package information
+    List {
+        /// Show detailed package information
+        #[clap(short, long)]
+        detailed: bool,
+        /// Filter packages by name pattern
+        #[clap(short, long)]
+        filter: Option<String>,
+    },
+    /// Show package information
+    PackageInfo {
+        /// Package name to get information about  
+        package: String,
+    },
+    /// Show command history
+    History {
+        /// Number of recent entries to show
+        #[clap(short, long, default_value = "10")]
+        limit: usize,
+        /// Search history for specific terms
+        #[clap(short, long)]
+        search: Option<String>,
+        /// Clear history
+        #[clap(long)]
+        clear: bool,
+    },
+    /// Configuration management
+    Config {
+        #[clap(subcommand)]
+        action: ConfigAction,
+    },
+    /// Cache management
+    Cache {
+        #[clap(subcommand)]
+        action: CacheAction,
     },
     /// Generate shell completion scripts
     Completions {
@@ -225,6 +291,106 @@ fn main() -> Result<()> {
                     }
                 }
                 None => logger.error("Unable to determine package remove command for this distribution"),
+            }
+        }
+        Commands::List { detailed, filter } => {
+            match distro.get_package_list_command(detailed, filter.as_deref()) {
+                Some(cmd) => {
+                    let safe_to_run = CommandExecutor::is_safe_to_execute(&cmd);
+                    let _ = CommandExecutor::execute_command(&cmd, !safe_to_run)?;
+                }
+                None => logger.error("Unable to determine package list command for this distribution"),
+            }
+        }
+        Commands::PackageInfo { package } => {
+            match distro.get_package_info_command(&package) {
+                Some(cmd) => {
+                    let safe_to_run = CommandExecutor::is_safe_to_execute(&cmd);
+                    let _ = CommandExecutor::execute_command(&cmd, !safe_to_run)?;
+                }
+                None => logger.error("Unable to determine package info command for this distribution"),
+            }
+        }
+        Commands::History { limit, search, clear } => {
+            let mut history_manager = history::HistoryManager::new()?;
+            
+            if clear {
+                history_manager.clear()?;
+                logger.success("Command history cleared");
+            } else {
+                let entries = if let Some(search_term) = search {
+                    history_manager.search(&search_term, limit)?
+                } else {
+                    history_manager.get_recent(limit)?
+                };
+                
+                if entries.is_empty() {
+                    logger.info("No history entries found");
+                } else {
+                    logger.info("Command History:");
+                    for entry in entries {
+                        logger.output(format!("{} - {} - {}", 
+                            entry.timestamp.format("%Y-%m-%d %H:%M:%S"),
+                            entry.command,
+                            entry.package.as_ref().map_or("N/A".to_string(), |p| p.clone())
+                        ));
+                    }
+                }
+            }
+        }
+        Commands::Config { action } => {
+            let mut config_manager = config_manager::ConfigManager::new()?;
+            
+            match action {
+                ConfigAction::Show => {
+                    let config = config_manager.load()?;
+                    let json = serde_json::to_string_pretty(&config)?;
+                    logger.output(json);
+                }
+                ConfigAction::Edit => {
+                    config_manager.edit()?;
+                    logger.success("Configuration file opened in editor");
+                }
+                ConfigAction::Reset => {
+                    config_manager.reset()?;
+                    logger.success("Configuration reset to defaults");
+                }
+                ConfigAction::Set { key, value } => {
+                    config_manager.set(&key, &value)?;
+                    logger.success(format!("Set {key} = {value}"));
+                }
+            }
+        }
+        Commands::Cache { action } => {
+            let mut cache_manager = cache::CacheManager::new()?;
+            
+            match action {
+                CacheAction::Status => {
+                    let status = cache_manager.status()?;
+                    logger.info(format!("Cache entries: {}", status.entry_count));
+                    logger.info(format!("Cache size: {} bytes", status.total_size));
+                    logger.info(format!("Last updated: {}", 
+                        status.last_updated.map_or("Never".to_string(), 
+                            |ts| ts.format("%Y-%m-%d %H:%M:%S").to_string())
+                    ));
+                }
+                CacheAction::Clear => {
+                    cache_manager.clear()?;
+                    logger.success("Cache cleared");
+                }
+                CacheAction::List => {
+                    let entries = cache_manager.list()?;
+                    if entries.is_empty() {
+                        logger.info("No cache entries found");
+                    } else {
+                        logger.info("Cache entries:");
+                        for entry in entries {
+                            logger.output(format!("{} - {}", entry.key, 
+                                entry.created_at.format("%Y-%m-%d %H:%M:%S")
+                            ));
+                        }
+                    }
+                }
             }
         }
         Commands::Completions { .. } => {
