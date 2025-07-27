@@ -6,6 +6,11 @@ mod executor;
 mod logger;
 mod history;
 mod cache;
+mod monitoring;
+mod remote_control;
+mod package_manager;
+mod system_config;
+mod system_logger;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -188,6 +193,42 @@ enum Commands {
         #[clap(long)]
         dry_run: bool,
     },
+    /// System monitoring and health checks
+    Monitor {
+        /// Show system metrics
+        #[clap(short, long)]
+        metrics: bool,
+        /// Run health checks
+        #[clap(long)]
+        health: bool,
+        /// Show metrics history
+        #[clap(long)]
+        history: bool,
+    },
+    /// Remote host management
+    Remote {
+        /// Remote host name
+        #[clap(short, long)]
+        host: String,
+        /// Command to execute
+        #[clap(short, long)]
+        command: String,
+        /// Run command as root
+        #[clap(long)]
+        sudo: bool,
+        /// Test connectivity only
+        #[clap(long)]
+        test: bool,
+    },
+    /// System configuration management
+    SystemConfig {
+        /// Show current system configuration
+        #[clap(short, long)]
+        show: bool,
+        /// Generate sample configuration
+        #[clap(long)]
+        sample: bool,
+    },
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut clap::Command) {
@@ -268,7 +309,8 @@ fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()>
     Ok(())
 }
 
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
     
     // Handle completions command early to avoid unnecessary distro detection
@@ -578,6 +620,131 @@ fn main() -> Result<()> {
         Commands::SelfUpdate { .. } => {
             // This case is handled early in the function
             unreachable!()
+        }
+        Commands::Monitor { metrics, health, history } => {
+            let mut monitor = monitoring::SystemMonitor::new();
+            
+            if health {
+                let health_checks = monitor.run_health_checks();
+                logger.info("System Health Checks:");
+                for check in health_checks {
+                    match check.status {
+                        monitoring::HealthStatus::Healthy => logger.success(format!("✓ {}: {}", check.name, check.message)),
+                        monitoring::HealthStatus::Warning => logger.warn(format!("⚠ {}: {}", check.name, check.message)),
+                        monitoring::HealthStatus::Critical => logger.error(format!("✗ {}: {}", check.name, check.message)),
+                        monitoring::HealthStatus::Unknown => logger.info(format!("? {}: {}", check.name, check.message)),
+                    }
+                }
+            }
+            
+            if metrics {
+                match monitor.collect_metrics() {
+                    Ok(metrics) => {
+                        let json = serde_json::to_string_pretty(&metrics)?;
+                        logger.json(&json);
+                    }
+                    Err(e) => logger.error(format!("Failed to collect metrics: {}", e)),
+                }
+            }
+            
+            if history {
+                let history = monitor.get_history();
+                if history.is_empty() {
+                    logger.info("No metrics history available");
+                } else {
+                    logger.info("Metrics History:");
+                    for (i, entry) in history.iter().enumerate() {
+                        logger.output(format!("[{}] {} - CPU: {:.1}%, Memory: {:.1}GB/{:.1}GB", 
+                            i + 1,
+                            chrono::DateTime::from_timestamp(entry.timestamp as i64, 0)
+                                .unwrap_or_default()
+                                .format("%Y-%m-%d %H:%M:%S"),
+                            entry.cpu_usage,
+                            entry.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
+                            entry.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0
+                        ));
+                    }
+                }
+            }
+            
+            // Default: show basic metrics if no specific option provided
+            if !metrics && !health && !history {
+                match monitor.collect_metrics() {
+                    Ok(metrics) => {
+                        logger.info("System Metrics:");
+                        logger.info(format!("CPU Usage: {:.1}%", metrics.cpu_usage));
+                        logger.info(format!("Memory: {:.1}GB/{:.1}GB ({:.1}%)", 
+                            metrics.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
+                            metrics.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0,
+                            (metrics.memory_usage.used as f64 / metrics.memory_usage.total as f64) * 100.0
+                        ));
+                        logger.info(format!("Load Average: {:.2}, {:.2}, {:.2}", 
+                            metrics.load_average.one_min,
+                            metrics.load_average.five_min,
+                            metrics.load_average.fifteen_min
+                        ));
+                        logger.info(format!("Uptime: {} days", metrics.uptime.as_secs() / 86400));
+                    }
+                    Err(e) => logger.error(format!("Failed to collect metrics: {}", e)),
+                }
+            }
+        }
+        Commands::Remote { host, command, sudo, test } => {
+            let system_config = system_config::SystemConfig::load()?;
+            let controller = remote_control::RemoteController::new(system_config.remote);
+            
+            if test {
+                logger.info(format!("Testing connectivity to {}", host));
+                match controller.test_connectivity(&host).await {
+                    Ok(true) => logger.success(format!("✓ Successfully connected to {}", host)),
+                    Ok(false) => logger.error(format!("✗ Failed to connect to {}", host)),
+                    Err(e) => logger.error(format!("Connection test failed: {}", e)),
+                }
+            } else {
+                let task = remote_control::RemoteTask {
+                    id: "manual-command".to_string(),
+                    command: command.clone(),
+                    hosts: vec![host.clone()],
+                    parallel: false,
+                    timeout: Some(std::time::Duration::from_secs(60)),
+                    become_root: sudo,
+                };
+                
+                match controller.execute_task(&task).await {
+                    Ok(results) => {
+                        for result in results {
+                            logger.info(format!("Host: {}", result.host));
+                            logger.info(format!("Success: {}", result.success));
+                            if !result.stdout.is_empty() {
+                                logger.output(format!("Output:\n{}", result.stdout));
+                            }
+                            if !result.stderr.is_empty() {
+                                logger.error(format!("Error:\n{}", result.stderr));
+                            }
+                            logger.info(format!("Duration: {:?}", result.duration));
+                        }
+                    }
+                    Err(e) => logger.error(format!("Failed to execute remote command: {}", e)),
+                }
+            }
+        }
+        Commands::SystemConfig { show, sample } => {
+            if sample {
+                let sample_config = system_config::SystemConfig::generate_sample_config();
+                logger.output(sample_config);
+            } else if show {
+                match system_config::SystemConfig::load() {
+                    Ok(config) => {
+                        let json = serde_json::to_string_pretty(&config)?;
+                        logger.json(&json);
+                    }
+                    Err(e) => logger.error(format!("Failed to load system configuration: {}", e)),
+                }
+            } else {
+                logger.info("System Configuration Management:");
+                logger.info("Use --show to display current configuration");
+                logger.info("Use --sample to generate a sample configuration");
+            }
         }
     }
 
