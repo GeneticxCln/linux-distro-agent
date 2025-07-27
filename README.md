@@ -3,7 +3,12 @@
 <div align="center">
 
 ![LDA Logo](https://img.shields.io/badge/LDA-Linux%20Distribution%20Agent-blue?style=for-the-badge)
-[![Version](https://img.shields.io/badge/version-0.1.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
+
+## 🎯 Goals
+- **Unification of Package Management**: Providing a seamless interface for package management across all major Linux distributions.
+- **Custom Distribution Building**: Simplifying the process of creating custom Linux distributions with enhanced tools and capabilities.
+- **Extensibility and Integration**: Encouraging the expansion of features through community contributions and external integrations.
+[![Version](https://img.shields.io/badge/version-0.2.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
 [![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
 
@@ -457,6 +462,10 @@ linux-distro-agent completions <SHELL>
 
 **Supported shells:** `bash`, `zsh`, `fish`, `powershell`, `elvish`
 
+## 🛡️ Security
+
+The Linux Distribution Agent follows the principle of least privilege and recommends running commands with necessary permissions only. Always review generated commands before execution to ensure they meet your security requirements. Regular updates are encouraged to keep your installation secure.
+
 ## ⚙️ Configuration
 
 The tool uses a TOML configuration file located at `~/.config/linux-distro-agent/config.toml`.
@@ -557,6 +566,13 @@ $ linux-distro-agent info --pretty
   "version_id": "22.04",
   "package_manager": "apt"
 }
+
+# Self-update the tool
+$ linux-distro-agent self-update
+Checking for updates...
+Latest version is 0.2.1.
+Updating to the latest version...
+Update complete!
 
 # List installed packages with filter
 $ linux-distro-agent list --filter python
