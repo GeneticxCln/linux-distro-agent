@@ -7,7 +7,9 @@
 [![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
 
-**A comprehensive Linux distribution management tool with custom distro building capabilities**
+**A lightweight agent for automating Linux distribution management, package operations, and custom distro building**
+
+🎯 **Purpose**: Unify Linux package management across distributions and enable custom Linux distribution creation with a single, powerful CLI tool.
 
 [Features](#-features) • [Installation](#-installation) • [Usage](#-usage) • [Distro Building](#-linux-distribution-builder) • [Documentation](#-documentation)
 
@@ -170,6 +172,30 @@ To install 'docker', run: sudo dnf install docker
 - [Acknowledgments](#-acknowledgments)
 
 ## 🛠️ Installation
+
+### Quick Install (One-liner)
+
+```bash
+# Install latest release (recommended)
+curl -fsSL https://raw.githubusercontent.com/GeneticxCln/linux-distro-agent/main/install.sh | bash
+
+# Or install to custom location
+curl -fsSL https://raw.githubusercontent.com/GeneticxCln/linux-distro-agent/main/install.sh | bash -s -- --prefix=/usr/local
+```
+
+### Dependencies
+
+**Runtime Dependencies:**
+- Linux kernel 3.10+ (systemd recommended)
+- glibc 2.17+ or musl libc
+- Package manager: `pacman`, `apt`, `dnf`, `zypper`, `portage`, `nix`, or `apk`
+
+**Build Dependencies (for custom distros):**
+- `pacstrap` (Arch-based builds)
+- `debootstrap` (Debian/Ubuntu builds)
+- `mksquashfs` (SquashFS creation)
+- `xorriso` (ISO generation)
+- `syslinux` (bootloader setup)
 
 ### From Source
 

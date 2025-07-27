@@ -1,6 +1,5 @@
 use anyhow::{Result, Context};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -401,7 +400,7 @@ impl DistroBuilder {
         
         // Filter out packages that are already included in base system
         let base_packages = vec!["base", "linux", "linux-firmware"];
-        let mut additional_essential: Vec<String> = self.config.packages.essential
+        let additional_essential: Vec<String> = self.config.packages.essential
             .iter()
             .filter(|pkg| !base_packages.contains(&pkg.as_str()))
             .cloned()
