@@ -1,0 +1,18 @@
+# Global ownership - you own everything in this repository
+* @GeneticxCln
+
+# Rust source code requires your review
+src/ @GeneticxCln
+Cargo.toml @GeneticxCln
+Cargo.lock @GeneticxCln
+
+# Nix configuration requires your review
+flake.nix @GeneticxCln
+flake.lock @GeneticxCln
+
+# Documentation requires your review
+README.md @GeneticxCln
+COMPLETIONS.md @GeneticxCln
+
+# GitHub workflows require your review
+.github/ @GeneticxCln
