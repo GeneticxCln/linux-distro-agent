@@ -12,6 +12,7 @@ use clap_complete::{generate, Generator, Shell};
 use anyhow::Result;
 use std::io;
 use std::path::PathBuf;
+use std::process::Command;
 use distro::DistroInfo;
 use distro_builder::{DistroBuilder, DistroConfig};
 use executor::CommandExecutor;
@@ -178,10 +179,84 @@ enum Commands {
         #[clap(long, default_value = "minimal")]
         template: String,
     },
+    /// Update LDA to the latest version
+    SelfUpdate {
+        /// Force update even if already on latest version
+        #[clap(short, long)]
+        force: bool,
+        /// Show what would be updated without actually updating
+        #[clap(long)]
+        dry_run: bool,
+    },
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut clap::Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut io::stdout());
+}
+
+fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()> {
+    let current_version = env!("CARGO_PKG_VERSION");
+    logger.info(format!("Current LDA version: {}", current_version));
+    
+    if dry_run {
+        logger.info("[DRY RUN] Checking for updates...");
+    } else {
+        logger.info("Checking for updates...");
+    }
+    
+    // Check for latest release from GitHub API
+    let output = Command::new("curl")
+        .args(["-s", "https://api.github.com/repos/alexguillaume/linux-distro-agent/releases/latest"])
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(anyhow::anyhow!("Failed to check for updates. Make sure curl is installed and you have internet access."));
+    }
+    
+    let response = String::from_utf8(output.stdout)?;
+    let json: serde_json::Value = serde_json::from_str(&response)?;
+    
+    let latest_version = json["tag_name"]
+        .as_str()
+        .ok_or_else(|| anyhow::anyhow!("Could not parse latest version from GitHub API"))?;
+    
+    let latest_version = latest_version.trim_start_matches('v');
+    
+    logger.info(format!("Latest LDA version: {}", latest_version));
+    
+    if latest_version == current_version && !force {
+        logger.success("🎉 You're already running the latest version!");
+        return Ok(());
+    }
+    
+    if dry_run {
+        if latest_version != current_version {
+            logger.info(format!("[DRY RUN] Would update from {} to {}", current_version, latest_version));
+        } else {
+            logger.info("[DRY RUN] Would force update (same version)");
+        }
+        return Ok(());
+    }
+    
+    logger.info("Downloading and installing the latest version...");
+    
+    // Download and execute the install script
+    let install_cmd = "curl -fsSL https://raw.githubusercontent.com/alexguillaume/linux-distro-agent/main/install.sh | bash";
+    
+    logger.verbose(format!("Running: {}", install_cmd));
+    
+    let status = Command::new("bash")
+        .args(["-c", install_cmd])
+        .status()?;
+    
+    if status.success() {
+        logger.success("🎉 LDA has been successfully updated!");
+        logger.info("You may need to restart your terminal or run 'hash -r' to use the updated version.");
+    } else {
+        return Err(anyhow::anyhow!("Update failed. Please try updating manually."));
+    }
+    
+    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -243,6 +318,9 @@ fn main() -> Result<()> {
                 println!("{}", toml_string);
             }
             return Ok(());
+        }
+        Commands::SelfUpdate { force, dry_run } => {
+            return handle_self_update(&logger, *force, *dry_run);
         }
         _ => {}
     }
@@ -485,6 +563,10 @@ fn main() -> Result<()> {
             unreachable!()
         }
         Commands::GenerateConfig { .. } => {
+            // This case is handled early in the function
+            unreachable!()
+        }
+        Commands::SelfUpdate { .. } => {
             // This case is handled early in the function
             unreachable!()
         }
