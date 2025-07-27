@@ -1,6 +1,7 @@
 mod config;
 mod config_manager;
 mod distro;
+mod distro_builder;
 mod executor;
 mod logger;
 mod history;
@@ -10,7 +11,9 @@ use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
 use anyhow::Result;
 use std::io;
+use std::path::PathBuf;
 use distro::DistroInfo;
+use distro_builder::{DistroBuilder, DistroConfig};
 use executor::CommandExecutor;
 use logger::Logger;
 
@@ -148,6 +151,33 @@ enum Commands {
         #[clap(value_enum)]
         shell: Shell,
     },
+    /// Build a custom Linux distribution ISO
+    BuildDistro {
+        /// Distribution name
+        #[clap(short, long)]
+        name: Option<String>,
+        /// Configuration file path
+        #[clap(short = 'c', long)]
+        config: Option<PathBuf>,
+        /// Work directory for build process
+        #[clap(short = 'w', long)]
+        work_dir: Option<PathBuf>,
+        /// Output directory for the ISO
+        #[clap(short = 'o', long)]
+        output_dir: Option<PathBuf>,
+        /// Use default minimal configuration
+        #[clap(long)]
+        minimal: bool,
+    },
+    /// Generate a distro configuration template
+    GenerateConfig {
+        /// Output file path
+        #[clap(short = 'o', long)]
+        output: Option<PathBuf>,
+        /// Configuration template type
+        #[clap(long, default_value = "minimal")]
+        template: String,
+    },
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut clap::Command) {
@@ -165,6 +195,59 @@ fn main() -> Result<()> {
     }
     
     let logger = Logger::new(cli.verbose, cli.quiet);
+    
+    // Handle distro builder commands that don't need distro detection
+    match &cli.command {
+        Commands::BuildDistro { name, config, work_dir, output_dir, minimal } => {
+            let config = if *minimal {
+                logger.info("Using default minimal configuration.");
+                DistroConfig::default()
+            } else if let Some(config_path) = config {
+                logger.info("Loading configuration from file.");
+                let config_string = std::fs::read_to_string(config_path)?;
+                toml::from_str(&config_string)?
+            } else {
+                return Err(anyhow::anyhow!("No configuration provided! Use --minimal or provide a config file."));
+            };
+
+            // Override the name if provided
+            let config = if let Some(name) = name {
+                DistroConfig { name: name.clone(), ..config }
+            } else {
+                config
+            };
+
+            // Define work and output directories
+            let work_dir = work_dir.clone().unwrap_or_else(|| "./work_dir".into());
+            let output_dir = output_dir.clone().unwrap_or_else(|| "./output".into());
+
+            // Create builder
+            let builder = DistroBuilder::new(config, work_dir, output_dir);
+            let rt = tokio::runtime::Runtime::new()?;
+            let iso_path = rt.block_on(builder.build())?;
+
+            logger.success(format!("🎉 Distro build complete! ISO created at: {}", iso_path.display()));
+            return Ok(());
+        }
+        Commands::GenerateConfig { output, template } => {
+            let template_config = match template.as_str() {
+                "minimal" => DistroConfig::default(),
+                _ => return Err(anyhow::anyhow!("Unknown template type: {}", template)),
+            };
+
+            let toml_string = toml::to_string_pretty(&template_config)?;
+            if let Some(output_path) = output {
+                std::fs::write(output_path, &toml_string)?;
+                logger.success("Configuration template written to file.");
+            } else {
+                println!("{}", toml_string);
+            }
+            return Ok(());
+        }
+        _ => {}
+    }
+    
+    // For other commands, detect distro
     let distro = DistroInfo::detect()?;
 
     match cli.command {
@@ -394,6 +477,14 @@ fn main() -> Result<()> {
             }
         }
         Commands::Completions { .. } => {
+            // This case is handled early in the function
+            unreachable!()
+        }
+        Commands::BuildDistro { .. } => {
+            // This case is handled early in the function
+            unreachable!()
+        }
+        Commands::GenerateConfig { .. } => {
             // This case is handled early in the function
             unreachable!()
         }

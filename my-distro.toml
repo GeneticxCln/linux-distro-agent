@@ -1,0 +1,40 @@
+name = "MyLinux"
+version = "1.0"
+description = "A custom Linux distribution"
+architecture = "x86_64"
+base_system = "Arch"
+
+[packages]
+essential = [
+    "base",
+    "linux",
+    "linux-firmware",
+    "networkmanager",
+    "sudo",
+]
+desktop_environment = "Xfce"
+additional_packages = [
+    "firefox",
+    "vim",
+    "git",
+]
+custom_repositories = []
+
+[kernel]
+kernel_type = "Vanilla"
+modules = []
+
+[bootloader]
+bootloader = "Syslinux"
+timeout = 30
+default_entry = "linux"
+
+[branding.colors]
+primary = "#0078d4"
+secondary = "#005a9e"
+accent = "#00bcf2"
+
+[filesystem]
+root_fs = "SquashFS"
+compression = "Xz"
+size_limit = 4096

@@ -1,0 +1,34 @@
+name = "MinimalLinux"
+version = "1.0"
+description = "A minimal Linux distribution for testing"
+architecture = "x86_64"
+base_system = "Arch"
+
+[packages]
+essential = [
+    "base",
+    "linux",
+    "linux-firmware"
+]
+# No desktop environment for minimal build
+additional_packages = []
+custom_repositories = []
+
+[kernel]
+kernel_type = "Vanilla"
+modules = []
+
+[bootloader]
+bootloader = "Syslinux"
+timeout = 30
+default_entry = "linux"
+
+[branding.colors]
+primary = "#0078d4"
+secondary = "#005a9e"
+accent = "#00bcf2"
+
+[filesystem]
+root_fs = "SquashFS"
+compression = "Gzip"  # Faster compression
+size_limit = 2048     # 2GB limit

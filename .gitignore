@@ -1,1 +1,6 @@
 /target
+
+# Build outputs
+output/
+*.iso
+work_dir/
