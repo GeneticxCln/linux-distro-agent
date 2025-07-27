@@ -206,7 +206,7 @@ fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()>
     
     // Check for latest release from GitHub API
     let output = Command::new("curl")
-        .args(["-s", "https://api.github.com/repos/alexguillaume/linux-distro-agent/releases/latest"])
+        .args(["-s", "https://api.github.com/repos/GeneticxCln/linux-distro-agent/releases/latest"])
         .output()?;
     
     if !output.status.success() {
@@ -241,7 +241,7 @@ fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()>
     logger.info("Downloading and installing the latest version...");
     
     // Download and execute the install script
-    let install_cmd = "curl -fsSL https://raw.githubusercontent.com/alexguillaume/linux-distro-agent/main/install.sh | bash";
+    let install_cmd = "curl -fsSL https://raw.githubusercontent.com/GeneticxCln/linux-distro-agent/main/install.sh | bash";
     
     logger.verbose(format!("Running: {}", install_cmd));
     
