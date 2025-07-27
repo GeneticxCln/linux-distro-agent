@@ -11,6 +11,7 @@ mod remote_control;
 mod package_manager;
 mod system_config;
 mod system_logger;
+mod wsm;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -228,6 +229,24 @@ enum Commands {
         /// Generate sample configuration
         #[clap(long)]
         sample: bool,
+    },
+    /// Window System Manager (WSM) - manage window systems, desktop environments, and displays
+    Wsm {
+        /// Detect current window system information
+        #[clap(short, long)]
+        detect: bool,
+        /// Show available sessions
+        #[clap(long)]
+        sessions: bool,
+        /// Show display configuration
+        #[clap(long)]
+        displays: bool,
+        /// Restart a component (gdm, sddm, lightdm, x11)
+        #[clap(long)]
+        restart: Option<String>,
+        /// Switch session type (x11, wayland)
+        #[clap(long)]
+        switch: Option<String>,
     },
 }
 
@@ -744,6 +763,77 @@ async fn main() -> Result<()> {
                 logger.info("System Configuration Management:");
                 logger.info("Use --show to display current configuration");
                 logger.info("Use --sample to generate a sample configuration");
+            }
+        }
+        Commands::Wsm { detect, sessions, displays, restart, switch } => {
+            let mut wsm = wsm::WindowSystemManager::new();
+            
+            if detect {
+                match wsm.detect_window_system() {
+                    Ok(info) => {
+                        let json = serde_json::to_string_pretty(&info)?;
+                        logger.json(&json);
+                    }
+                    Err(e) => logger.error(format!("Failed to detect window system: {}", e)),
+                }
+            } else if sessions {
+                match wsm.list_available_sessions() {
+                    Ok(sessions) => {
+                        logger.info("Available Sessions:");
+                        for session in sessions {
+                            logger.output(format!("• {}", session));
+                        }
+                    }
+                    Err(e) => logger.error(format!("Failed to list sessions: {}", e)),
+                }
+            } else if displays {
+                match wsm.get_display_configuration() {
+                    Ok(config) => {
+                        logger.info("Display Configuration:");
+                        for (key, value) in config {
+                            logger.output(format!("{}: {}", key, value));
+                        }
+                    }
+                    Err(e) => logger.error(format!("Failed to get display configuration: {}", e)),
+                }
+            } else if let Some(component) = restart {
+                if let Some(cmd) = wsm.get_restart_command(&component) {
+                    if cmd.requires_root {
+                        logger.warn("This command requires root privileges:");
+                    }
+                    logger.output(format!("To {}: {}", cmd.description, cmd.command));
+                } else {
+                    logger.error(format!("Unknown component: {}", component));
+                }
+            } else if let Some(session_type) = switch {
+                if let Some(cmd) = wsm.get_switch_session_command(&session_type) {
+                    logger.output(format!("To {}: {}", cmd.description, cmd.command));
+                } else {
+                    logger.error(format!("Unknown session type: {}", session_type));
+                }
+            } else {
+                // Default: detect and show basic window system info
+                match wsm.detect_window_system() {
+                    Ok(info) => {
+                        logger.info("Window System Information:");
+                        logger.info(format!("Window System: {:?}", info.window_system));
+                        if let Some(de) = &info.desktop_environment {
+                            logger.info(format!("Desktop Environment: {:?}", de));
+                        }
+                        if let Some(dm) = &info.display_manager {
+                            logger.info(format!("Display Manager: {:?}", dm));
+                        }
+                        if let Some(wm) = &info.window_manager {
+                            logger.info(format!("Window Manager: {}", wm));
+                        }
+                        logger.info(format!("Session Type: {:?}", info.session_type));
+                        if let Some(compositor) = &info.compositor {
+                            logger.info(format!("Compositor: {}", compositor));
+                        }
+                        logger.info(format!("Displays: {} detected", info.displays.len()));
+                    }
+                    Err(e) => logger.error(format!("Failed to detect window system: {}", e)),
+                }
             }
         }
     }
