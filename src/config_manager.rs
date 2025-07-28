@@ -15,6 +15,8 @@ pub struct Config {
     pub history_enabled: bool,
     pub backup_before_install: bool,
     pub preferred_aur_helper: String, // paru, yay, etc.
+    pub prefer_home_manager: bool, // Prefer Home Manager over system package manager
+    pub preferred_package_manager: Option<String>, // Override package manager detection
 }
 
 impl Default for Config {
@@ -29,6 +31,8 @@ impl Default for Config {
             history_enabled: true,
             backup_before_install: false,
             preferred_aur_helper: "paru".to_string(),
+            prefer_home_manager: false,
+            preferred_package_manager: None,
         }
     }
 }
@@ -121,6 +125,8 @@ impl ConfigManager {
             "history_enabled" => self.config.history_enabled = value.parse()?,
             "backup_before_install" => self.config.backup_before_install = value.parse()?,
             "preferred_aur_helper" => self.config.preferred_aur_helper = value.to_string(),
+            "prefer_home_manager" => self.config.prefer_home_manager = value.parse()?,
+            "preferred_package_manager" => self.config.preferred_package_manager = if value.is_empty() { None } else { Some(value.to_string()) },
             _ => anyhow::bail!("Unknown configuration key: {}", key),
         }
         self.save()
