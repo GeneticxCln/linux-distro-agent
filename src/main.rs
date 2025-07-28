@@ -6,6 +6,15 @@ mod executor;
 mod logger;
 mod history;
 mod cache;
+mod system_config;
+mod monitoring;
+mod wsm;
+mod service_manager;
+mod remote_control;
+mod package_manager;
+mod system_logger;
+mod security;
+mod plugins;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -17,6 +26,13 @@ use distro::DistroInfo;
 use distro_builder::{DistroBuilder, DistroConfig};
 use executor::CommandExecutor;
 use logger::Logger;
+use monitoring::SystemMonitor;
+use wsm::WindowSystemManager;
+use service_manager::ServiceManager;
+use remote_control::{RemoteController, RemoteTask};
+use system_config::SystemConfig;
+use security::SecurityAuditor;
+use plugins::PluginManager;
 
 #[derive(Parser)]
 #[clap(name = "linux-distro-agent")]
@@ -187,6 +203,120 @@ enum Commands {
         /// Show what would be updated without actually updating
         #[clap(long)]
         dry_run: bool,
+    },
+    /// System monitoring and metrics
+    Monitor {
+        /// Show system metrics
+        #[clap(short, long)]
+        metrics: bool,
+        /// Run health checks
+        #[clap(long)]
+        health: bool,
+        /// Show metrics history
+        #[clap(long)]
+        history: bool,
+    },
+    /// Window system management
+    WindowSystem {
+        /// Detect window system information
+        #[clap(short, long)]
+        detect: bool,
+        /// List available sessions
+        #[clap(long)]
+        sessions: bool,
+        /// Get display configuration
+        #[clap(long)]
+        displays: bool,
+    },
+    /// Service management
+    Services {
+        /// List services (optionally filtered)
+        #[clap(short, long)]
+        list: bool,
+        /// Show failed services
+        #[clap(long)]
+        failed: bool,
+        /// Show active services
+        #[clap(long)]
+        active: bool,
+        /// Service name for specific operations
+        #[clap(long)]
+        service: Option<String>,
+        /// Service action (start, stop, restart, enable, disable, status)
+        #[clap(long)]
+        action: Option<String>,
+        /// Show top processes
+        #[clap(long)]
+        top: bool,
+        /// Number of items to show
+        #[clap(long, default_value = "10")]
+        limit: usize,
+    },
+    /// Remote control operations
+    Remote {
+        /// Add a remote host
+        #[clap(long)]
+        add_host: Option<String>,
+        /// Test connectivity to a host
+        #[clap(long)]
+        test: Option<String>,
+        /// Execute command on remote hosts
+        #[clap(long)]
+        execute: Option<String>,
+        /// Hosts to target (comma separated)
+        #[clap(long)]
+        hosts: Option<String>,
+        /// Run in parallel
+        #[clap(long)]
+        parallel: bool,
+    },
+    /// Security auditing and system hardening
+    Security {
+        /// Run full security audit
+        #[clap(long)]
+        audit: bool,
+        /// Show security report in JSON format
+        #[clap(long)]
+        json: bool,
+        /// Filter findings by severity level (low, medium, high, critical)
+        #[clap(long)]
+        severity: Option<String>,
+        /// Filter findings by category
+        #[clap(long)]
+        category: Option<String>,
+    },
+    /// Plugin management system
+    Plugin {
+        /// List all available plugins
+        #[clap(short, long)]
+        list: bool,
+        /// Show plugin information
+        #[clap(long)]
+        info: Option<String>,
+        /// Enable a plugin
+        #[clap(long)]
+        enable: Option<String>,
+        /// Disable a plugin
+        #[clap(long)]
+        disable: Option<String>,
+        /// Execute a plugin
+        #[clap(long)]
+        exec: Option<String>,
+        /// Plugin execution arguments
+        #[clap(long)]
+        args: Vec<String>,
+        /// Install plugin from directory
+        #[clap(long)]
+        install: Option<PathBuf>,
+        /// Uninstall a plugin
+        #[clap(long)]
+        uninstall: Option<String>,
+        /// Create plugin template
+        #[clap(long)]
+        create: Option<String>,
+        /// Plugin type for template creation
+        #[clap(long, default_value = "command")]
+        plugin_type: String,
     },
 }
 
@@ -578,6 +708,265 @@ fn main() -> Result<()> {
         Commands::SelfUpdate { .. } => {
             // This case is handled early in the function
             unreachable!()
+        }
+        Commands::Monitor { metrics, health, history } => {
+            let mut monitor = SystemMonitor::new();
+            
+            if metrics {
+                match monitor.collect_metrics() {
+                    Ok(metrics) => {
+                        let json = serde_json::to_string_pretty(&metrics)?;
+                        logger.json(&json);
+                    }
+                    Err(e) => logger.error(&format!("Failed to collect metrics: {}", e)),
+                }
+            }
+            
+            if health {
+                let health_checks = monitor.run_health_checks();
+                logger.info("System Health Checks:");
+                for check in health_checks {
+                    let status_symbol = match check.status {
+                        monitoring::HealthStatus::Healthy => "✓",
+                        monitoring::HealthStatus::Warning => "⚠",
+                        monitoring::HealthStatus::Critical => "✗",
+                        monitoring::HealthStatus::Unknown => "?",
+                    };
+                    logger.info(format!("{} {}: {}", status_symbol, check.name, check.message));
+                }
+            }
+            
+            if history {
+                let metrics_history = monitor.get_history();
+                if metrics_history.is_empty() {
+                    logger.info("No metrics history available. Run with --metrics first.");
+                } else {
+                    logger.info("Metrics History:");
+                    for metric in metrics_history {
+                        logger.info(format!("Timestamp: {}, CPU: {:.1}%, Memory: {:.1}%", 
+                            metric.timestamp,
+                            metric.cpu_usage,
+                            if metric.memory_usage.total > 0 {
+                                (metric.memory_usage.used as f64 / metric.memory_usage.total as f64) * 100.0
+                            } else { 0.0 }
+                        ));
+                    }
+                }
+            }
+        }
+        Commands::WindowSystem { detect, sessions, displays } => {
+            let mut wsm = WindowSystemManager::new();
+            
+            if detect {
+                match wsm.detect_window_system() {
+                    Ok(info) => {
+                        let json = serde_json::to_string_pretty(&info)?;
+                        logger.json(&json);
+                    }
+                    Err(e) => logger.error(&format!("Failed to detect window system: {}", e)),
+                }
+            }
+            
+            if sessions {
+                match wsm.list_available_sessions() {
+                    Ok(sessions) => {
+                        logger.info("Available Sessions:");
+                        for session in sessions {
+                            logger.info(format!("• {}", session));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to list sessions: {}", e)),
+                }
+            }
+            
+            if displays {
+                match wsm.get_display_configuration() {
+                    Ok(config) => {
+                        logger.info("Display Configuration:");
+                        for (key, value) in config {
+                            logger.info(format!("{}: {}", key, value));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to get display configuration: {}", e)),
+                }
+            }
+        }
+        Commands::Services { list, failed, active, service, action, top, limit } => {
+            let mut service_manager = ServiceManager::new();
+            
+            if list {
+                match service_manager.list_services(None) {
+                    Ok(services) => {
+                        logger.info("System Services:");
+                        for svc in services.iter().take(limit) {
+                            let status = match svc.status {
+                                service_manager::ServiceStatus::Active => "✓ Active",
+                                service_manager::ServiceStatus::Inactive => "○ Inactive",
+                                service_manager::ServiceStatus::Failed => "✗ Failed",
+                                _ => "? Unknown",
+                            };
+                            logger.info(format!("{:<30} {:<15} {}", svc.name, status, svc.description));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to list services: {}", e)),
+                }
+            }
+            
+            if failed {
+                match service_manager.list_failed_services() {
+                    Ok(services) => {
+                        logger.info("Failed Services:");
+                        for svc in services {
+                            logger.error(format!("✗ {}: {}", svc.name, svc.description));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to list failed services: {}", e)),
+                }
+            }
+            
+            if active {
+                match service_manager.list_active_services() {
+                    Ok(services) => {
+                        logger.info("Active Services:");
+                        for svc in services.iter().take(limit) {
+                            logger.success(format!("✓ {}: {}", svc.name, svc.description));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to list active services: {}", e)),
+                }
+            }
+            
+            if let (Some(svc_name), Some(svc_action)) = (service, action) {
+                if let Some(cmd) = service_manager.get_service_command(&svc_action, &svc_name) {
+                    logger.output(format!("To {} '{}', run: {}", svc_action, svc_name, cmd.command));
+                } else {
+                    logger.error(&format!("Unknown action '{}' for service '{}'", svc_action, svc_name));
+                }
+            }
+            
+            if top {
+                match service_manager.get_top_processes(limit) {
+                    Ok(processes) => {
+                        logger.info("Top Processes:");
+                        logger.info(format!("{:<10} {:<15} {:<8} {:<8} {}", "PID", "USER", "CPU%", "MEM%", "COMMAND"));
+                        for proc in processes {
+                            logger.info(format!("{:<10} {:<15} {:<8.1} {:<8.1} {}", 
+                                proc.pid, proc.user, proc.cpu_percent, proc.memory_percent, proc.command));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Failed to get top processes: {}", e)),
+                }
+            }
+        }
+        Commands::Remote { add_host, test, execute, hosts, parallel } => {
+            let system_config = SystemConfig::load()?;
+            let remote_controller = RemoteController::new(system_config.remote);
+            
+            if let Some(host_name) = add_host {
+                logger.info(format!("To add host '{}', edit your hosts configuration file:", host_name));
+                logger.info(RemoteController::generate_inventory_template());
+            }
+            
+            if let Some(host_name) = test {
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(remote_controller.test_connectivity(&host_name)) {
+                    Ok(success) => {
+                        if success {
+                            logger.success(format!("✓ Connection to '{}' successful", host_name));
+                        } else {
+                            logger.error(format!("✗ Connection to '{}' failed", host_name));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Connection test failed: {}", e)),
+                }
+            }
+            
+            if let (Some(command), Some(target_hosts)) = (execute, hosts) {
+                let host_list: Vec<String> = target_hosts.split(',').map(|s| s.trim().to_string()).collect();
+                let task = RemoteTask {
+                    id: "manual-execution".to_string(),
+                    command: command.clone(),
+                    hosts: host_list,
+                    parallel,
+                    timeout: Some(std::time::Duration::from_secs(300)),
+                    become_root: false,
+                };
+                
+                let rt = tokio::runtime::Runtime::new()?;
+                match rt.block_on(remote_controller.execute_task(&task)) {
+                    Ok(results) => {
+                        logger.info("Remote Execution Results:");
+                        for result in results {
+                            if result.success {
+                                logger.success(format!("✓ {}: Command completed successfully", result.host));
+                                if !result.stdout.is_empty() {
+                                    logger.info(format!("Output: {}", result.stdout.trim()));
+                                }
+                            } else {
+                                logger.error(format!("✗ {}: Command failed (exit code: {:?})", result.host, result.exit_code));
+                                if !result.stderr.is_empty() {
+                                    logger.error(format!("Error: {}", result.stderr.trim()));
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Remote execution failed: {}", e)),
+                }
+            }
+        }
+        Commands::Security { audit, json, severity, category } => {
+            let mut security_auditor = SecurityAuditor::new();
+
+            if audit {
+                logger.info("Running full security audit...");
+                match security_auditor.run_full_audit() {
+                    Ok(audit_result) => {
+                        logger.info("Security Audit Results:");
+                        logger.info(format!("Total Issues: {}", audit_result.findings.len()));
+                        let filtered_issues = audit_result.filter_by(severity, category);
+                        for issue in &filtered_issues {
+                            logger.info(format!("[{}] {} - {}", issue.severity, issue.category, issue.description));
+                        }
+                    }
+                    Err(e) => logger.error(&format!("Security audit failed: {}", e)),
+                }
+            }
+
+            if json {
+                logger.info("Outputting security report in JSON format...");
+                match security_auditor.get_security_report_json() {
+                    Ok(json_report) => logger.output(json_report),
+                    Err(e) => logger.error(&format!("Failed to generate JSON report: {}", e)),
+                }
+            }
+        }
+        Commands::Plugin { list, info, enable, disable, exec, args, install, uninstall, create, plugin_type: _ } => {
+            let plugin_manager = PluginManager::new()?;
+
+            if list {
+                logger.info("Available plugins:");
+                let plugins = plugin_manager.list_plugins();
+                for plugin in plugins {
+                    let status = if plugin.config.enabled { "✓ Enabled" } else { "○ Disabled" };
+                    logger.info(format!("{:<20} {:<10} {} - {}", plugin.metadata.name, plugin.metadata.version, status, plugin.metadata.description));
+                }
+            }
+
+            if let Some(plugin_name) = info {
+                logger.info(format!("Retrieving information for plugin: {}", plugin_name));
+                match plugin_manager.get_plugin(&plugin_name) {
+                    Some(info) => logger.info(format!("Plugin Info: Name: {}, Version: {}, Enabled: {}", info.metadata.name, info.metadata.version, info.config.enabled)),
+                    None => logger.error(&format!("Plugin '{}' not found", plugin_name)),
+                }
+            }
+
+            if let Some(_plugin_name) = enable { /* Implement enable plugin logic */ }
+            if let Some(_plugin_name) = disable { /* Implement disable plugin logic */ }
+            if let Some(_exec_name) = exec { /* Implement execute plugin logic */ }
+            if !args.is_empty() { /* Implement plugin argument passing */ }
+            if let Some(_dir) = install { /* Implement install plugin logic */ }
+            if let Some(_plugin_name) = uninstall { /* Implement uninstall plugin logic */ }
+            if let Some(_name) = create { /* Implement create plugin template logic */ }
         }
     }
 
