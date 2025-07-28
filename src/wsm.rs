@@ -2,7 +2,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -35,7 +34,8 @@ pub enum DesktopEnvironment {
     Pantheon,
     Budgie,
     Enlightenment,
-    i3,
+    #[serde(rename = "i3")]
+    I3,
     Sway,
     Awesome,
     Openbox,
@@ -152,7 +152,7 @@ impl WindowSystemManager {
                 "pantheon" => Some(DesktopEnvironment::Pantheon),
                 "budgie" => Some(DesktopEnvironment::Budgie),
                 "enlightenment" => Some(DesktopEnvironment::Enlightenment),
-                "i3" => Some(DesktopEnvironment::i3),
+                "i3" => Some(DesktopEnvironment::I3),
                 "sway" => Some(DesktopEnvironment::Sway),
                 "awesome" => Some(DesktopEnvironment::Awesome),
                 "openbox" => Some(DesktopEnvironment::Openbox),
@@ -184,7 +184,7 @@ impl WindowSystemManager {
             return Some(DesktopEnvironment::Cinnamon);
         }
         if self.is_process_running("i3") {
-            return Some(DesktopEnvironment::i3);
+            return Some(DesktopEnvironment::I3);
         }
         if self.is_process_running("sway") {
             return Some(DesktopEnvironment::Sway);
@@ -281,14 +281,6 @@ impl WindowSystemManager {
             }
         }
 
-        // Try wlr-randr for Wayland
-        if displays.is_empty() {
-            if let Ok(output) = Command::new("wlr-randr").output() {
-                let output_str = String::from_utf8_lossy(&output.stdout);
-                // Parse wlr-randr output (implementation would go here)
-            }
-        }
-
         // Fallback: create a default display if none found
         if displays.is_empty() {
             displays.push(DisplayInfo {
@@ -320,7 +312,7 @@ impl WindowSystemManager {
                     return Some(DisplayInfo {
                         name,
                         resolution,
-                        refresh_rate: 60.0, // Default, would need more parsing for actual rate
+                        refresh_rate: 60.0,
                         is_primary,
                         position: (x, y),
                     });
@@ -393,10 +385,6 @@ impl WindowSystemManager {
             }),
             _ => None,
         }
-    }
-
-    pub fn get_current_info(&self) -> Option<&WindowSystemInfo> {
-        self.current_info.as_ref()
     }
 
     pub fn list_available_sessions(&self) -> Result<Vec<String>> {
