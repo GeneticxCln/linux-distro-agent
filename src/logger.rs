@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 /// Logger that handles different output levels based on CLI flags
+#[derive(Clone)]
 pub struct Logger {
     pub verbose: bool,
     pub quiet: bool,

@@ -15,14 +15,15 @@ mod wsm;
 mod security;
 mod plugins;
 mod agent;
+mod self_update;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
 use anyhow::Result;
 use std::io;
 use std::path::PathBuf;
-use std::process::Command;
 use distro::DistroInfo;
+use self_update::{SelfUpdater, UpdateConfig};
 use distro_builder::{DistroBuilder, DistroConfig};
 use executor::CommandExecutor;
 use logger::Logger;
@@ -196,6 +197,18 @@ enum Commands {
         /// Show what would be updated without actually updating
         #[clap(long)]
         dry_run: bool,
+        /// Check for updates only, don't install
+        #[clap(short, long)]
+        check: bool,
+        /// Include pre-release versions
+        #[clap(long)]
+        pre_release: bool,
+        /// Update channel (stable, beta, alpha, nightly)
+        #[clap(long, default_value = "stable")]
+        channel: String,
+        /// Show current update configuration
+        #[clap(long)]
+        config: bool,
     },
     /// System monitoring and health checks
     Monitor {
@@ -326,139 +339,80 @@ fn print_completions<G: Generator>(generator: G, cmd: &mut clap::Command) {
     generate(generator, cmd, cmd.get_name().to_string(), &mut io::stdout());
 }
 
-fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()> {
-    let current_version = env!("CARGO_PKG_VERSION");
-    logger.info(format!("Current LDA version: {}", current_version));
+async fn handle_self_update(
+    logger: &Logger, 
+    force: bool, 
+    dry_run: bool, 
+    check: bool, 
+    pre_release: bool, 
+    channel: &str, 
+    show_config: bool
+) -> Result<()> {
+    use self_update::UpdateChannel;
     
-    if dry_run {
-        logger.info("[DRY RUN] Checking for updates...");
-    } else {
-        logger.info("Checking for updates...");
-    }
-    
-    // Check for latest release from GitHub API
-    let output = Command::new("curl")
-        .args(["-s", "https://api.github.com/repos/GeneticxCln/linux-distro-agent/releases/latest"])
-        .output()?;
-    
-    if !output.status.success() {
-        return Err(anyhow::anyhow!("Failed to check for updates. Make sure curl is installed and you have internet access."));
-    }
-    
-    let response = String::from_utf8(output.stdout)?;
-    let json: serde_json::Value = serde_json::from_str(&response)?;
-    
-    // Check if the response indicates no releases exist
-    if let Some(message) = json["message"].as_str() {
-        if message == "Not Found" {
-            logger.info("No releases found in the repository yet.");
-            logger.info("The self-update feature will be available once the first release is published.");
+    // Parse update channel
+    let update_channel = match channel {
+        "stable" => UpdateChannel::Stable,
+        "beta" => UpdateChannel::Beta,
+        "alpha" => UpdateChannel::Alpha,
+        "nightly" => UpdateChannel::Nightly,
+        _ => {
+            logger.error(&format!("Invalid update channel: {}. Valid options: stable, beta, alpha, nightly", channel));
             return Ok(());
         }
-    }
+    };
     
-    let latest_version = json["tag_name"]
-        .as_str()
-        .ok_or_else(|| anyhow::anyhow!("Could not parse latest version from GitHub API"))?;
+    // Create update configuration
+    let mut config = UpdateConfig::default();
+    config.pre_release = pre_release;
+    config.update_channel = update_channel;
     
-    let latest_version = latest_version.trim_start_matches('v');
-    
-    logger.info(format!("Latest LDA version: {}", latest_version));
-    
-    if latest_version == current_version && !force {
-        logger.success("🎉 You're already running the latest version!");
+    if show_config {
+        logger.info("📋 Update Configuration:");
+        logger.info(&format!("  Check Interval: {} hours", config.check_interval));
+        logger.info(&format!("  Auto Update: {}", config.auto_update));
+        logger.info(&format!("  Pre-release: {}", config.pre_release));
+        logger.info(&format!("  Backup Count: {}", config.backup_count));
+        logger.info(&format!("  Fallback to Source: {}", config.fallback_to_source));
+        logger.info(&format!("  Update Channel: {:?}", config.update_channel));
         return Ok(());
     }
     
-    if dry_run {
-        if latest_version != current_version {
-            logger.info(format!("[DRY RUN] Would update from {} to {}", current_version, latest_version));
+    let updater = SelfUpdater::new(config, logger.clone())?;
+    
+    if check {
+        let update_info = updater.check_for_updates().await?;
+        logger.info(&format!("📦 Current Version: {}", update_info.current_version));
+        logger.info(&format!("📦 Latest Version: {}", update_info.latest_version));
+        
+        if update_info.needs_update {
+            logger.info("🔄 Update Available!");
+            if let Some(size) = update_info.asset_size {
+                logger.info(&format!("📏 Download Size: {:.2} MB", size as f64 / 1024.0 / 1024.0));
+            }
+            if update_info.is_prerelease {
+                logger.warn("⚠️  This is a pre-release version");
+            }
+            
+            if !update_info.release_notes.trim().is_empty() {
+                logger.info("📝 Release Notes:");
+                for line in update_info.release_notes.lines().take(5) {
+                    logger.info(&format!("   {}", line));
+                }
+                if update_info.release_notes.lines().count() > 5 {
+                    logger.info("   ... (truncated)");
+                }
+            }
+            
+            logger.info("💡 Run 'lda self-update' to install the update");
         } else {
-            logger.info("[DRY RUN] Would force update (same version)");
+            logger.success("✅ You're running the latest version!");
         }
-        return Ok(());
+    } else {
+        updater.perform_update(force, dry_run).await?;
     }
     
-    logger.info("Downloading and installing the latest version...");
-    
-    // Get the current binary path
-    let current_exe = std::env::current_exe()?;
-    let current_exe_str = current_exe.to_str().unwrap_or("/usr/local/bin/linux-distro-agent");
-    
-    // Create a script that will handle the update after this process exits
-    let update_script = format!(r#"
-#!/bin/bash
-set -e
-
-echo "[INFO] Starting LDA update process..."
-echo "[INFO] Current binary: {}"
-
-# Wait a moment for the current process to exit
-sleep 2
-
-# Create temporary directory for the build
-TEMP_DIR=$(mktemp -d)
-echo "[INFO] Using temporary directory: $TEMP_DIR"
-
-# Clone and build the latest version
-echo "[INFO] Cloning repository..."
-cd "$TEMP_DIR"
-git clone https://github.com/GeneticxCln/linux-distro-agent.git lda
-cd lda
-
-echo "[INFO] Building optimized binary..."
-cargo build --release
-
-if [ ! -f "target/release/linux-distro-agent" ]; then
-    echo "[ERROR] Build failed - binary not found"
-    exit 1
-fi
-
-# Backup current binary if it exists
-if [ -f "{}" ]; then
-    echo "[INFO] Creating backup of current binary..."
-    sudo cp "{}" "{}.backup-$(date +%s)"
-fi
-
-# Install new binary
-echo "[INFO] Installing new binary..."
-sudo cp "target/release/linux-distro-agent" "{}"
-sudo chmod +x "{}"
-
-# Cleanup
-echo "[INFO] Cleaning up temporary files..."
-cd /
-rm -rf "$TEMP_DIR"
-
-echo "[SUCCESS] 🎉 LDA has been successfully updated to version {}!"
-echo "[INFO] You can now run 'lda --version' to verify the new version."
-echo "[INFO] Run 'hash -r' if you encounter issues with command not found."
-
-# Clean up this script
-rm -f "$0"
-"#, current_exe_str, current_exe_str, current_exe_str, current_exe_str, current_exe_str, current_exe_str, latest_version);
-    
-    // Write the update script to a temporary file
-    let script_path = "/tmp/lda-update.sh";
-    std::fs::write(script_path, update_script)?;
-    
-    // Make the script executable
-    Command::new("chmod")
-        .args(["+x", script_path])
-        .status()?;
-    
-    logger.info("Update script created. The update will continue after this process exits.");
-    logger.info("Note: You may be prompted for your password to install the updated binary.");
-    
-    // Execute the update script in the background and exit
-    Command::new("nohup")
-        .args(["bash", script_path])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .spawn()?;
-    
-    logger.info("Update process started. Exiting current instance...");
-    std::process::exit(0);
+    Ok(())
 }
 
 #[tokio::main]
@@ -522,8 +476,8 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
-        Commands::SelfUpdate { force, dry_run } => {
-            return handle_self_update(&logger, *force, *dry_run);
+        Commands::SelfUpdate { force, dry_run, check, pre_release, channel, config } => {
+            return handle_self_update(&logger, *force, *dry_run, *check, *pre_release, channel, *config).await;
         }
         _ => {}
     }

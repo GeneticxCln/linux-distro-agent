@@ -5,6 +5,55 @@ All notable changes to the Linux Distribution Agent (LDA) project will be docume
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2025-01-28
+
+### 🚀 Enhanced Self-Update System
+
+#### Major Improvements to Self-Update Functionality
+- **Complete Self-Update Overhaul**: Replaced basic bash script approach with robust Rust-based updater
+- **Pre-built Binary Support**: Added support for downloading pre-built binaries from GitHub releases
+- **Intelligent Fallback**: Automatic fallback to source compilation when pre-built binaries aren't available
+- **Platform Detection**: Automatic detection of OS and architecture (Linux x86_64, aarch64, arm; macOS; Windows)
+- **Backup and Rollback**: Automatic backup creation with rollback on update failure
+- **Update Channels**: Support for stable, beta, alpha, and nightly release channels
+- **Enhanced CLI Options**: New command-line options for better control over update process
+
+#### New Self-Update Features
+- **Check-Only Mode**: `--check` flag to check for updates without installing
+- **Pre-release Support**: `--pre-release` flag to include pre-release versions
+- **Update Channels**: `--channel` option to specify update channel (stable/beta/alpha/nightly)
+- **Configuration Display**: `--config` option to show current update configuration
+- **Dry-Run Mode**: Enhanced `--dry-run` mode with detailed update information
+- **Force Update**: `--force` option to reinstall current version if needed
+
+#### Technical Improvements
+- **Async HTTP Client**: Uses reqwest for reliable GitHub API communication
+- **Binary Verification**: Validates downloaded binaries before installation
+- **Automatic Cleanup**: Removes old backups based on configurable retention policy
+- **Error Recovery**: Comprehensive error handling with automatic rollback on failure
+- **Cross-Platform Support**: Works on Linux, macOS, and Windows with appropriate binary handling
+- **Version Comparison**: Proper semantic version comparison for update detection
+- **Progress Feedback**: Clear progress indicators and status messages
+
+#### Safety and Reliability
+- **Backup System**: Creates timestamped backups before updates
+- **Integrity Checks**: Verifies binary functionality before replacement  
+- **Atomic Updates**: Safe binary replacement to prevent corruption
+- **Rollback Support**: Automatic restoration from backup on update failure
+- **Prerequisite Checking**: Validates build tools availability for source fallback
+
+### 🔧 Internal Improvements
+- **Modular Architecture**: New `self_update.rs` module with clean separation of concerns
+- **Configurable Behavior**: Extensive configuration options for update behavior
+- **Enhanced Logging**: Better progress reporting and error messages
+- **Memory Efficient**: Streams large downloads instead of loading entirely into memory
+- **Timeout Handling**: Configurable timeouts for network operations
+
+### 📚 Updated Documentation
+- **Enhanced Help**: Improved command-line help with all new options
+- **Usage Examples**: Clear examples for different update scenarios
+- **Configuration Guide**: Documentation of all configuration options
+
 ## [0.3.0] - 2025-01-28
 
 ### 🆕 Major New Features
