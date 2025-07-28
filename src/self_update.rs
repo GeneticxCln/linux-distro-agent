@@ -466,22 +466,107 @@ impl SelfUpdater {
         let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
         let backup_path = current_exe.with_extension(&format!("{}_{}", BACKUP_SUFFIX, timestamp));
         
-        fs::copy(current_exe, &backup_path)?;
-        Ok(backup_path)
+        // Try direct copy first
+        match fs::copy(current_exe, &backup_path) {
+            Ok(_) => Ok(backup_path),
+            Err(e) => {
+                // If direct copy fails due to permissions, try with sudo
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    self.create_backup_with_sudo(current_exe, &backup_path)?;
+                    Ok(backup_path)
+                } else {
+                    Err(anyhow!("Failed to create backup: {}", e))
+                }
+            }
+        }
+    }
+
+    /// Create backup using sudo when elevated permissions are required
+    #[cfg(unix)]
+    fn create_backup_with_sudo(&self, current_exe: &Path, backup_path: &Path) -> Result<()> {
+        let status = Command::new("sudo")
+            .args(&[
+                "cp",
+                current_exe.to_str().ok_or_else(|| anyhow!("Invalid source path"))?,
+                backup_path.to_str().ok_or_else(|| anyhow!("Invalid backup path"))?
+            ])
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow!("Failed to create backup with sudo: exit code {}", status));
+        }
+
+        Ok(())
+    }
+
+    /// Windows stub for create_backup_with_sudo
+    #[cfg(windows)]
+    fn create_backup_with_sudo(&self, _current_exe: &Path, _backup_path: &Path) -> Result<()> {
+        // Windows doesn't need sudo, so this should never be called
+        Err(anyhow!("Sudo operations not supported on Windows"))
+    }
+
+    /// Windows stub for restore_from_backup_with_sudo
+    #[cfg(windows)]
+    fn restore_from_backup_with_sudo(&self, _backup_path: &Path, _target_path: &Path) -> Result<()> {
+        // Windows doesn't need sudo, so this should never be called
+        Err(anyhow!("Sudo operations not supported on Windows"))
     }
 
     /// Restore from backup
     fn restore_from_backup(&self, backup_path: &Path, target_path: &Path) -> Result<()> {
-        fs::copy(backup_path, target_path)?;
-        
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(target_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(target_path, perms)?;
+        // Try direct copy first
+        match fs::copy(backup_path, target_path) {
+            Ok(_) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(target_path)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(target_path, perms)?;
+                }
+                Ok(())
+            }
+            Err(e) => {
+                // If direct copy fails due to permissions, try with sudo
+                if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    self.restore_from_backup_with_sudo(backup_path, target_path)
+                } else {
+                    Err(anyhow!("Failed to restore from backup: {}", e))
+                }
+            }
         }
-        
+    }
+
+    /// Restore from backup using sudo when elevated permissions are required
+    #[cfg(unix)]
+    fn restore_from_backup_with_sudo(&self, backup_path: &Path, target_path: &Path) -> Result<()> {
+        // Use sudo to copy the backup file
+        let status = Command::new("sudo")
+            .args(&[
+                "cp",
+                backup_path.to_str().ok_or_else(|| anyhow!("Invalid backup path"))?,
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow!("Failed to restore backup with sudo: exit code {}", status));
+        }
+
+        // Set executable permissions with sudo
+        let chmod_status = Command::new("sudo")
+            .args(&[
+                "chmod",
+                "755",
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !chmod_status.success() {
+            return Err(anyhow!("Failed to set permissions on restored binary with sudo: exit code {}", chmod_status));
+        }
+
         Ok(())
     }
 
@@ -564,15 +649,59 @@ impl SelfUpdater {
         // Unix systems
         #[cfg(unix)]
         {
-            fs::copy(new_binary, target_path)?;
-            
-            // Ensure executable permissions
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(target_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(target_path, perms)?;
+            // First try direct copy (works if we have write permissions)
+            match fs::copy(new_binary, target_path) {
+                Ok(_) => {
+                    // Ensure executable permissions
+                    use std::os::unix::fs::PermissionsExt;
+                    let mut perms = fs::metadata(target_path)?.permissions();
+                    perms.set_mode(0o755);
+                    fs::set_permissions(target_path, perms)?;
+                    Ok(())
+                }
+                Err(e) => {
+                    // If direct copy fails due to permissions, try with sudo
+                    if e.kind() == std::io::ErrorKind::PermissionDenied {
+                        self.logger.info("🔐 Elevated permissions required. Please enter your password:");
+                        self.replace_binary_with_sudo(new_binary, target_path)
+                    } else {
+                        Err(anyhow!("Failed to replace binary: {}", e))
+                    }
+                }
+            }
+        }
+    }
+
+    /// Replace binary using sudo when elevated permissions are required
+    #[cfg(unix)]
+    fn replace_binary_with_sudo(&self, new_binary: &Path, target_path: &Path) -> Result<()> {
+        // Use sudo to copy the file
+        let status = Command::new("sudo")
+            .args(&[
+                "cp",
+                new_binary.to_str().ok_or_else(|| anyhow!("Invalid path"))?,
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow!("Failed to copy binary with sudo: exit code {}", status));
         }
 
+        // Set executable permissions with sudo
+        let chmod_status = Command::new("sudo")
+            .args(&[
+                "chmod",
+                "755",
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !chmod_status.success() {
+            return Err(anyhow!("Failed to set permissions with sudo: exit code {}", chmod_status));
+        }
+
+        self.logger.success("✅ Binary updated successfully with elevated permissions");
         Ok(())
     }
 
