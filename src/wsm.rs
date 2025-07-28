@@ -22,12 +22,12 @@ pub enum WindowSystem {
     Unknown,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DesktopEnvironment {
-    GNOME,
-    KDE,
-    XFCE,
-    LXDE,
+    Gnome,
+    Kde,
+    Xfce,
+    Lxde,
     LXQt,
     Mate,
     Cinnamon,
@@ -40,19 +40,18 @@ pub enum DesktopEnvironment {
     Awesome,
     Openbox,
     Fluxbox,
-    BSPWM,
-    Qtile,
-    DWM,
+    Bspwm,
+    Dwm,
     Custom(String),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DisplayManager {
-    GDM,
-    SDDM,
+    Gdm,
+    Sddm,
     LightDM,
-    XDM,
-    LXDM,
+    Xdm,
+    Lxdm,
     Ly,
     Custom(String),
 }
@@ -142,10 +141,10 @@ impl WindowSystemManager {
         // Check environment variables
         if let Ok(desktop) = std::env::var("XDG_CURRENT_DESKTOP") {
             return match desktop.to_lowercase().as_str() {
-                "gnome" => Some(DesktopEnvironment::GNOME),
-                "kde" | "plasma" => Some(DesktopEnvironment::KDE),
-                "xfce" => Some(DesktopEnvironment::XFCE),
-                "lxde" => Some(DesktopEnvironment::LXDE),
+                "gnome" => Some(DesktopEnvironment::Gnome),
+                "kde" | "plasma" => Some(DesktopEnvironment::Kde),
+                "xfce" => Some(DesktopEnvironment::Xfce),
+                "lxde" => Some(DesktopEnvironment::Lxde),
                 "lxqt" => Some(DesktopEnvironment::LXQt),
                 "mate" => Some(DesktopEnvironment::Mate),
                 "cinnamon" => Some(DesktopEnvironment::Cinnamon),
@@ -157,25 +156,25 @@ impl WindowSystemManager {
                 "awesome" => Some(DesktopEnvironment::Awesome),
                 "openbox" => Some(DesktopEnvironment::Openbox),
                 "fluxbox" => Some(DesktopEnvironment::Fluxbox),
-                "bspwm" => Some(DesktopEnvironment::BSPWM),
-                "qtile" => Some(DesktopEnvironment::Qtile),
-                "dwm" => Some(DesktopEnvironment::DWM),
+                "bspwm" => Some(DesktopEnvironment::Bspwm),
+                "qtile" => Some(DesktopEnvironment::Custom("qtile".to_string())),
+                "dwm" => Some(DesktopEnvironment::Dwm),
                 _ => Some(DesktopEnvironment::Custom(desktop)),
             };
         }
 
         // Check for specific processes
         if self.is_process_running("gnome-shell") {
-            return Some(DesktopEnvironment::GNOME);
+            return Some(DesktopEnvironment::Gnome);
         }
         if self.is_process_running("plasmashell") {
-            return Some(DesktopEnvironment::KDE);
+            return Some(DesktopEnvironment::Kde);
         }
         if self.is_process_running("xfce4-panel") {
-            return Some(DesktopEnvironment::XFCE);
+            return Some(DesktopEnvironment::Xfce);
         }
         if self.is_process_running("lxpanel") {
-            return Some(DesktopEnvironment::LXDE);
+            return Some(DesktopEnvironment::Lxde);
         }
         if self.is_process_running("mate-panel") {
             return Some(DesktopEnvironment::Mate);
@@ -196,19 +195,19 @@ impl WindowSystemManager {
     fn detect_display_manager(&self) -> Option<DisplayManager> {
         // Check for running display managers
         if self.is_process_running("gdm") || self.is_process_running("gdm3") {
-            return Some(DisplayManager::GDM);
+            return Some(DisplayManager::Gdm);
         }
         if self.is_process_running("sddm") {
-            return Some(DisplayManager::SDDM);
+            return Some(DisplayManager::Sddm);
         }
         if self.is_process_running("lightdm") {
             return Some(DisplayManager::LightDM);
         }
         if self.is_process_running("xdm") {
-            return Some(DisplayManager::XDM);
+            return Some(DisplayManager::Xdm);
         }
         if self.is_process_running("lxdm") {
-            return Some(DisplayManager::LXDM);
+            return Some(DisplayManager::Lxdm);
         }
         if self.is_process_running("ly") {
             return Some(DisplayManager::Ly);
@@ -216,20 +215,20 @@ impl WindowSystemManager {
 
         // Check systemd services
         if let Ok(output) = Command::new("systemctl")
-            .args(&["is-active", "--quiet", "gdm"])
+            .args(["is-active", "--quiet", "gdm"])
             .output()
         {
             if output.status.success() {
-                return Some(DisplayManager::GDM);
+                return Some(DisplayManager::Gdm);
             }
         }
 
         if let Ok(output) = Command::new("systemctl")
-            .args(&["is-active", "--quiet", "sddm"])
+            .args(["is-active", "--quiet", "sddm"])
             .output()
         {
             if output.status.success() {
-                return Some(DisplayManager::SDDM);
+                return Some(DisplayManager::Sddm);
             }
         }
 

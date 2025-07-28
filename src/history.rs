@@ -27,7 +27,7 @@ impl History {
         
         if history_path.exists() {
             let content = fs::read_to_string(&history_path)
-                .with_context(|| format!("Failed to read history file: {:?}", history_path))?;
+                .with_context(|| format!("Failed to read history file: {history_path:?}"))?;
             
             let history: History = serde_json::from_str(&content)
                 .with_context(|| "Failed to parse history file")?;
@@ -43,20 +43,35 @@ impl History {
         
         if let Some(parent) = history_path.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create history directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create history directory: {parent:?}"))?;
         }
         
         let content = serde_json::to_string_pretty(self)
             .with_context(|| "Failed to serialize history")?;
         
         fs::write(&history_path, content)
-            .with_context(|| format!("Failed to write history file: {:?}", history_path))?;
+            .with_context(|| format!("Failed to write history file: {history_path:?}"))?;
         
         Ok(())
     }
     
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: HistoryEntry) {
         self.entries.push(entry);
+    }
+
+    #[allow(dead_code)]
+    pub fn add_command(&mut self, command: &str, operation: &str, package: Option<String>, success: bool, output: Option<String>, distro: &str) {
+        let entry = HistoryEntry {
+            timestamp: Utc::now(),
+            command: command.to_string(),
+            operation: operation.to_string(),
+            package,
+            success,
+            output,
+            distro: distro.to_string(),
+        };
+        self.add_entry(entry);
         
         // Keep only last 1000 entries to prevent file from growing too large
         if self.entries.len() > 1000 {
@@ -78,7 +93,7 @@ impl History {
             .filter(|entry| {
                 entry.command.contains(query) 
                     || entry.operation.contains(query)
-                    || entry.package.as_ref().map_or(false, |p| p.contains(query))
+                    || entry.package.as_ref().is_some_and(|p| p.contains(query))
             })
             .collect()
     }
@@ -105,8 +120,20 @@ impl HistoryManager {
         Ok(Self { history })
     }
     
+    #[allow(dead_code)]
     pub fn add_entry(&mut self, entry: HistoryEntry) -> Result<()> {
         self.history.add_entry(entry);
+        self.save()
+    }
+
+    #[allow(dead_code)]
+    pub fn track_command(&mut self, command: &str, operation: &str, package: Option<String>, success: bool, output: Option<String>, distro: &str) -> Result<()> {
+        self.history.add_command(command, operation, package, success, output, distro);
+        self.save()
+    }
+
+    #[allow(dead_code)]
+    fn save(&self) -> Result<()> {
         self.history.save()
     }
     

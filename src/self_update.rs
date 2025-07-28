@@ -5,7 +5,6 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use chrono;
 use crate::logger::Logger;
 
 const GITHUB_API_BASE: &str = "https://api.github.com/repos/GeneticxCln/linux-distro-agent";

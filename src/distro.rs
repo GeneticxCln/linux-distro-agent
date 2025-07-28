@@ -145,26 +145,26 @@ impl DistroInfo {
 
     pub fn get_package_list_command(&self, detailed: bool, filter: Option<&str>) -> Option<String> {
         match self.package_manager.as_deref() {
-            Some("pacman") => Some(format!("pacman -Q{}{}", if detailed { "i" } else { "" }, filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("apt") => Some(format!("dpkg-query -l{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("dnf") => Some(format!("dnf list installed{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("zypper") => Some(format!("zypper se --installed-only{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("portage") => Some(format!("equery list{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("nix") => Some(format!("nix-env -q{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
-            Some("apk") => Some(format!("apk list --installed{}", filter.map(|f| format!(" | grep {}", f)).unwrap_or_default())),
+            Some("pacman") => Some(format!("pacman -Q{}{}", if detailed { "i" } else { "" }, filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("apt") => Some(format!("dpkg-query -l{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("dnf") => Some(format!("dnf list installed{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("zypper") => Some(format!("zypper se --installed-only{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("portage") => Some(format!("equery list{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("nix") => Some(format!("nix-env -q{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
+            Some("apk") => Some(format!("apk list --installed{}", filter.map(|f| format!(" | grep {f}")).unwrap_or_default())),
             _ => None,
         }
     }
 
     pub fn get_package_info_command(&self, package: &str) -> Option<String> {
         match self.package_manager.as_deref() {
-            Some("pacman") => Some(format!("pacman -Qi {}", package)),
-            Some("apt") => Some(format!("apt show {}", package)),
-            Some("dnf") => Some(format!("dnf info {}", package)),
-            Some("zypper") => Some(format!("zypper info {}", package)),
-            Some("portage") => Some(format!("equery list {}", package)),
-            Some("nix") => Some(format!("nix-env -qaP | grep {}", package)),
-            Some("apk") => Some(format!("apk info {}", package)),
+            Some("pacman") => Some(format!("pacman -Qi {package}")),
+            Some("apt") => Some(format!("apt show {package}")),
+            Some("dnf") => Some(format!("dnf info {package}")),
+            Some("zypper") => Some(format!("zypper info {package}")),
+            Some("portage") => Some(format!("equery list {package}")),
+            Some("nix") => Some(format!("nix-env -qaP | grep {package}")),
+            Some("apk") => Some(format!("apk info {package}")),
             _ => None,
         }
     }

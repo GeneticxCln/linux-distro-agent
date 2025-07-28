@@ -158,7 +158,7 @@ impl SystemMonitor {
 
         for line in meminfo.lines() {
             if let Some((key, value)) = line.split_once(':') {
-                let value = value.trim().split_whitespace().next().unwrap_or("0");
+                let value = value.split_whitespace().next().unwrap_or("0");
                 if let Ok(val) = value.parse::<u64>() {
                     values.insert(key.trim(), val * 1024); // Convert from kB to bytes
                 }
@@ -178,7 +178,7 @@ impl SystemMonitor {
 
     fn get_disk_usage(&self) -> Result<Vec<DiskInfo>> {
         let output = Command::new("df")
-            .args(&["-B1", "--output=source,target,fstype,size,used,avail,pcent"])
+            .args(["-B1", "--output=source,target,fstype,size,used,avail,pcent"])
             .output()?;
 
         let mut disks = Vec::new();
@@ -249,7 +249,7 @@ impl SystemMonitor {
         let values: Vec<&str> = loadavg.split_whitespace().collect();
 
         Ok(LoadAverage {
-            one_min: values.get(0).unwrap_or(&"0").parse().unwrap_or(0.0),
+            one_min: values.first().unwrap_or(&"0").parse().unwrap_or(0.0),
             five_min: values.get(1).unwrap_or(&"0").parse().unwrap_or(0.0),
             fifteen_min: values.get(2).unwrap_or(&"0").parse().unwrap_or(0.0),
         })
@@ -289,7 +289,7 @@ impl SystemMonitor {
         if let Ok(entries) = fs::read_dir("/proc") {
             for entry in entries.flatten() {
                 if let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() {
-                    if let Ok(stat_content) = fs::read_to_string(format!("/proc/{}/stat", pid)) {
+                if let Ok(stat_content) = fs::read_to_string(format!("/proc/{pid}/stat")) {
                         if let Some(state) = stat_content.split_whitespace().nth(2) {
                             match state {
                                 "R" => running += 1,
@@ -360,7 +360,7 @@ impl SystemMonitor {
             checks.push(HealthCheck {
                 name: "memory_usage".to_string(),
                 status,
-                message: format!("Memory usage: {:.1}%", usage_percent),
+                message: format!("Memory usage: {usage_percent:.1}%"),
                 last_check: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
                 details: Some(HashMap::from([
                     ("usage_percent".to_string(), usage_percent.to_string()),

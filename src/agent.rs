@@ -544,6 +544,17 @@ impl IntelligentAgent {
             SafetyLevel::Safe
         }
     }
+    
+    /// Get the current agent state (for status/stats display)
+    pub fn get_state(&self) -> &AgentState {
+        &self.state
+    }
+    
+    /// Clear all tasks from the agent queue
+    pub fn clear_all_tasks(&mut self) {
+        self.state.current_tasks.clear();
+        self.logger.info("All tasks cleared from agent queue");
+    }
 }
 
 impl SafetyEnforcer {
@@ -733,28 +744,4 @@ impl SafetyLevel {
 }
 
 // Add UUID dependency to Cargo.toml
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
-
-// Simple UUID alternative using hash
-mod uuid {
-    use super::*;
-    
-    pub struct Uuid;
-    
-    impl Uuid {
-        pub fn new_v4() -> UuidValue {
-            let mut hasher = DefaultHasher::new();
-            SystemTime::now().hash(&mut hasher);
-            UuidValue(hasher.finish())
-        }
-    }
-    
-    pub struct UuidValue(u64);
-    
-    impl UuidValue {
-        pub fn to_string(&self) -> String {
-            format!("{:x}", self.0)
-        }
-    }
-}
+use uuid::Uuid;

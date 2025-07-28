@@ -1,16 +1,9 @@
-# Linux Distribution Agent (LDA)
+# Linux Distribution Agent (LDA) v4.6.0
 
-<div align="center">
-
-![LDA Logo](https://img.shields.io/badge/LDA-Linux%20Distribution%20Agent-blue?style=for-the-badge)
-
-## 🎯 Goals
-- **Unification of Package Management**: Providing a seamless interface for package management across all major Linux distributions.
-- **Custom Distribution Building**: Simplifying the process of creating custom Linux distributions with enhanced tools and capabilities.
-- **Extensibility and Integration**: Encouraging the expansion of features through community contributions and external integrations.
-[![Version](https://img.shields.io/badge/version-0.3.2-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
-[![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)]()
+[![Version](https://img.shields.io/badge/version-4.6.0-blue.svg)]()
+[![Rust](https://img.shields.io/badge/rust-2024-red.svg)](https://www.rust-lang.org/)
 
 **A lightweight agent for automating Linux distribution management, package operations, and custom distro building**
 
