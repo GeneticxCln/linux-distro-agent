@@ -16,6 +16,7 @@ mod security;
 mod plugins;
 mod agent;
 mod self_update;
+mod compatibility_layer;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
