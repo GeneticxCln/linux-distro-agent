@@ -1,7 +1,5 @@
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use crate::distro::DistroInfo;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PackageManager {
@@ -132,62 +130,6 @@ impl PackageManagerRegistry {
         });
     }
 
-    pub fn get_manager(&self, name: &str) -> Option<&PackageManager> {
-        self.managers.get(name)
-    }
-
-    pub fn get_manager_for_distro(&self, distro: &DistroInfo) -> Option<&PackageManager> {
-        distro.package_manager.as_ref()
-            .and_then(|pm| self.get_manager(pm))
-    }
-
-    pub fn build_command(&self, manager: &PackageManager, operation: &PackageOperation) -> Result<String> {
-        let base_cmd = match operation.operation_type {
-            OperationType::Install => &manager.install_cmd,
-            OperationType::Remove => &manager.remove_cmd,
-            OperationType::Search => &manager.search_cmd,
-            OperationType::Update => &manager.update_cmd,
-            OperationType::List => &manager.list_cmd,
-            OperationType::Info => &manager.info_cmd,
-        };
-
-        let mut cmd = base_cmd.clone();
-        
-        // Add packages
-        for package in &operation.packages {
-            cmd.push(' ');
-            cmd.push_str(package);
-        }
-
-        // Add options
-        for (key, value) in &operation.options {
-            cmd.push_str(&format!(" --{}", key));
-            if !value.is_empty() {
-                cmd.push_str(&format!("={}", value));
-            }
-        }
-
-        Ok(cmd)
-    }
-
-    pub fn supports_operation(&self, manager: &PackageManager, operation: &OperationType) -> bool {
-        match operation {
-            OperationType::Install => !manager.install_cmd.is_empty(),
-            OperationType::Remove => !manager.remove_cmd.is_empty(),
-            OperationType::Search => !manager.search_cmd.is_empty(),
-            OperationType::Update => !manager.update_cmd.is_empty(),
-            OperationType::List => !manager.list_cmd.is_empty(),
-            OperationType::Info => !manager.info_cmd.is_empty(),
-        }
-    }
-
-    pub fn list_managers(&self) -> Vec<&String> {
-        self.managers.keys().collect()
-    }
-
-    pub fn add_custom_manager(&mut self, manager: PackageManager) {
-        self.managers.insert(manager.name.clone(), manager);
-    }
 }
 
 impl Default for PackageManagerRegistry {
@@ -196,39 +138,3 @@ impl Default for PackageManagerRegistry {
     }
 }
 
-// Helper functions for common operations
-pub fn create_install_operation(packages: Vec<String>) -> PackageOperation {
-    PackageOperation {
-        operation_type: OperationType::Install,
-        packages,
-        options: HashMap::new(),
-        dry_run: false,
-    }
-}
-
-pub fn create_search_operation(query: String) -> PackageOperation {
-    PackageOperation {
-        operation_type: OperationType::Search,
-        packages: vec![query],
-        options: HashMap::new(),
-        dry_run: false,
-    }
-}
-
-pub fn create_update_operation() -> PackageOperation {
-    PackageOperation {
-        operation_type: OperationType::Update,
-        packages: vec![],
-        options: HashMap::new(),
-        dry_run: false,
-    }
-}
-
-pub fn create_remove_operation(packages: Vec<String>) -> PackageOperation {
-    PackageOperation {
-        operation_type: OperationType::Remove,
-        packages,
-        options: HashMap::new(),
-        dry_run: false,
-    }
-}

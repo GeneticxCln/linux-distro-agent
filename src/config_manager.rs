@@ -39,7 +39,7 @@ impl Config {
         
         if config_path.exists() {
             let content = fs::read_to_string(&config_path)
-                .with_context(|| format!("Failed to read config file: {:?}", config_path))?;
+                .with_context(|| format!("Failed to read config file: {config_path:?}"))?;
             
             let config: Config = toml::from_str(&content)
                 .with_context(|| "Failed to parse config file")?;
@@ -58,14 +58,14 @@ impl Config {
         
         if let Some(parent) = config_path.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create config directory: {:?}", parent))?;
+                .with_context(|| format!("Failed to create config directory: {parent:?}"))?;
         }
         
         let content = toml::to_string_pretty(self)
             .with_context(|| "Failed to serialize config")?;
         
         fs::write(&config_path, content)
-            .with_context(|| format!("Failed to write config file: {:?}", config_path))?;
+            .with_context(|| format!("Failed to write config file: {config_path:?}"))?;
         
         Ok(())
     }

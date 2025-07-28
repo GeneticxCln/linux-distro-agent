@@ -2,7 +2,6 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write};
 use std::path::Path;
 use chrono::{DateTime, Utc};
-use serde_json;
 
 pub struct SystemLogger {
     log_file: Option<File>,

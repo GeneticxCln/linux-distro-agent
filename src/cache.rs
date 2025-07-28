@@ -4,7 +4,6 @@ use dirs::cache_dir;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
 
 use crate::distro::DistroInfo;
 
@@ -32,7 +31,7 @@ impl Cache {
         
         if cache_path.exists() {
             let content = fs::read_to_string(&cache_path)
-                .with_context(|| format!("Failed to read cache file: {:?}", cache_path))?;
+            .with_context(|| format!("Failed to read cache file: {cache_path:?}"))?;
             
             let cache: Cache = serde_json::from_str(&content)
                 .with_context(|| "Failed to parse cache file")?;
@@ -48,48 +47,20 @@ impl Cache {
         
         if let Some(parent) = cache_path.parent() {
             fs::create_dir_all(parent)
-                .with_context(|| format!("Failed to create cache directory: {:?}", parent))?;
+            .with_context(|| format!("Failed to create cache directory: {parent:?}"))?;
         }
         
         let content = serde_json::to_string_pretty(self)
             .with_context(|| "Failed to serialize cache")?;
         
         fs::write(&cache_path, content)
-            .with_context(|| format!("Failed to write cache file: {:?}", cache_path))?;
+            .with_context(|| format!("Failed to write cache file: {cache_path:?}"))?;
         
         Ok(())
     }
     
-    pub fn get(&self, key: &str, max_age: Duration) -> Option<&CacheData> {
-        if let Some(entry) = self.entries.get(key) {
-            let now = SystemTime::now();
-            let entry_time = SystemTime::UNIX_EPOCH + Duration::from_secs(entry.timestamp.timestamp() as u64);
-            
-            if now.duration_since(entry_time).unwrap_or(Duration::MAX) <= max_age {
-                return Some(&entry.data);
-            }
-        }
-        None
-    }
-    
-    pub fn set(&mut self, key: String, data: CacheData) {
-        let entry = CacheEntry {
-            timestamp: Utc::now(),
-            data,
-        };
-        self.entries.insert(key, entry);
-    }
-    
     pub fn clear(&mut self) {
         self.entries.clear();
-    }
-    
-    pub fn cleanup_expired(&mut self, max_age: Duration) {
-        let now = SystemTime::now();
-        self.entries.retain(|_, entry| {
-            let entry_time = SystemTime::UNIX_EPOCH + Duration::from_secs(entry.timestamp.timestamp() as u64);
-            now.duration_since(entry_time).unwrap_or(Duration::MAX) <= max_age
-        });
     }
     
     fn cache_path() -> Result<PathBuf> {
@@ -159,12 +130,4 @@ impl CacheManager {
         Ok(entries)
     }
     
-    pub fn get(&self, key: &str, max_age: Duration) -> Option<&CacheData> {
-        self.cache.get(key, max_age)
-    }
-    
-    pub fn set(&mut self, key: String, data: CacheData) -> Result<()> {
-        self.cache.set(key, data);
-        self.cache.save()
-    }
 }

@@ -47,20 +47,6 @@ impl RemoteController {
         }
     }
 
-    pub fn add_host(&mut self, name: String, host: RemoteHost) {
-        self.hosts.insert(name, host);
-    }
-
-    pub fn load_hosts_from_file(&mut self, path: &str) -> Result<()> {
-        let content = std::fs::read_to_string(path)
-            .context("Failed to read hosts file")?;
-        
-        let hosts: HashMap<String, RemoteHost> = toml::from_str(&content)
-            .context("Failed to parse hosts file")?;
-        
-        self.hosts.extend(hosts);
-        Ok(())
-    }
 
     pub async fn execute_task(&self, task: &RemoteTask) -> Result<Vec<RemoteResult>> {
         if !self.config.enable_ssh_support {
@@ -148,7 +134,7 @@ impl RemoteController {
         // Prepare command
         let mut command = task.command.clone();
         if task.become_root && host.user != "root" {
-            command = format!("sudo {}", command);
+            command = format!("sudo {command}");
         }
 
         ssh_cmd.arg(&command);
@@ -174,61 +160,6 @@ impl RemoteController {
         })
     }
 
-    pub fn generate_inventory_template() -> String {
-        r#"# Linux Distribution Agent - Remote Hosts Inventory
-# Save this as ~/.config/linux-distro-agent/hosts.toml
-
-[web-server]
-hostname = "192.168.1.100"
-user = "admin"
-port = 22
-key_path = "~/.ssh/id_rsa"
-
-[database-server]
-hostname = "db.example.com"
-user = "root"
-port = 2222
-key_path = "/etc/ssh/admin_key"
-
-[backup-server]
-hostname = "backup.local"
-user = "backup"
-"#.to_string()
-    }
-
-    // Predefined common tasks
-    pub fn create_system_update_task(hosts: Vec<String>) -> RemoteTask {
-        RemoteTask {
-            id: "system-update".to_string(),
-            command: "linux-distro-agent update --execute".to_string(),
-            hosts,
-            parallel: true,
-            timeout: Some(Duration::from_secs(600)),
-            become_root: true,
-        }
-    }
-
-    pub fn create_package_install_task(package: &str, hosts: Vec<String>) -> RemoteTask {
-        RemoteTask {
-            id: format!("install-{}", package),
-            command: format!("linux-distro-agent install {} --execute", package),
-            hosts,
-            parallel: true,
-            timeout: Some(Duration::from_secs(300)),
-            become_root: true,
-        }
-    }
-
-    pub fn create_info_gathering_task(hosts: Vec<String>) -> RemoteTask {
-        RemoteTask {
-            id: "gather-info".to_string(),
-            command: "linux-distro-agent info --pretty".to_string(),
-            hosts,
-            parallel: true,
-            timeout: Some(Duration::from_secs(30)),
-            become_root: false,
-        }
-    }
 
     pub async fn test_connectivity(&self, host_name: &str) -> Result<bool> {
         if let Some(_host) = self.hosts.get(host_name) {
@@ -244,7 +175,7 @@ user = "backup"
             let results = self.execute_task(&test_task).await?;
             Ok(results.first().map_or(false, |r| r.success))
         } else {
-            anyhow::bail!("Host '{}' not found", host_name);
+            anyhow::bail!("Host '{host_name}' not found");
         }
     }
 }

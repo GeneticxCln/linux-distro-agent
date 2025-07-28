@@ -38,9 +38,9 @@ pub struct PackageConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum DesktopEnvironment {
     Gnome,
-    KDE,
+    Kde,
     Xfce,
-    LXDE,
+    Lxde,
     Mate,
     Cinnamon,
     Sway,
@@ -66,9 +66,9 @@ pub struct KernelConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum KernelType {
     Vanilla,
-    LTS,
+    Lts,
     Hardened,
-    RT, // Real-time
+    Rt, // Real-time
     Custom(String),
 }
 
@@ -81,10 +81,10 @@ pub struct BootloaderConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Bootloader {
-    GRUB,
+    Grub,
     Systemd,
     Syslinux,
-    REfind,
+    Refind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,10 +111,10 @@ pub struct FilesystemConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FilesystemType {
-    SquashFS,
+    SquashFs,
     Ext4,
     Btrfs,
-    XFS,
+    Xfs,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -237,8 +237,8 @@ impl DistroBuilder {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            println!("STDERR: {}", stderr);
+            println!("STDOUT: {stdout}");
+            println!("STDERR: {stderr}");
             anyhow::bail!("pacstrap failed: {}", stderr);
         }
 
@@ -335,13 +335,13 @@ impl DistroBuilder {
                 // Install vanilla kernel
                 self.install_arch_kernel(&rootfs_dir, "linux").await?;
             }
-            KernelType::LTS => {
+            KernelType::Lts => {
                 self.install_arch_kernel(&rootfs_dir, "linux-lts").await?;
             }
             KernelType::Hardened => {
                 self.install_arch_kernel(&rootfs_dir, "linux-hardened").await?;
             }
-            KernelType::RT => {
+            KernelType::Rt => {
                 self.install_arch_kernel(&rootfs_dir, "linux-rt").await?;
             }
             KernelType::Custom(ref kernel) => {
@@ -353,7 +353,7 @@ impl DistroBuilder {
     }
 
     async fn install_arch_kernel(&self, rootfs_dir: &Path, kernel_package: &str) -> Result<()> {
-        println!("Installing kernel package: {}", kernel_package);
+        println!("Installing kernel package: {kernel_package}");
         
         // First, update the package database
         let mut update_cmd = AsyncCommand::new("arch-chroot");
@@ -381,8 +381,8 @@ impl DistroBuilder {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            println!("STDERR: {}", stderr);
+            println!("STDOUT: {stdout}");
+            println!("STDERR: {stderr}");
             // Don't fail if kernel is already installed
             if !stderr.contains("is up to date") && !stderr.contains("target not found") {
                 anyhow::bail!("Kernel installation failed: {}", stderr);
@@ -408,7 +408,7 @@ impl DistroBuilder {
         
         // Install only non-base essential packages
         if !additional_essential.is_empty() {
-            println!("Installing additional essential packages: {:?}", additional_essential);
+            println!("Installing additional essential packages: {additional_essential:?}");
             self.install_package_list(&rootfs_dir, &additional_essential).await?;
         } else {
             println!("✅ Skipping essential packages (already installed in base system)");
@@ -428,7 +428,7 @@ impl DistroBuilder {
     }
 
     async fn install_package_list(&self, rootfs_dir: &Path, packages: &[String]) -> Result<()> {
-        println!("Installing packages: {:?}", packages);
+        println!("Installing packages: {packages:?}");
         
         // First update the package database
         let mut update_cmd = AsyncCommand::new("arch-chroot");
@@ -458,8 +458,8 @@ impl DistroBuilder {
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            println!("STDERR: {}", stderr);
+            println!("STDOUT: {stdout}");
+            println!("STDERR: {stderr}");
             anyhow::bail!("Package installation failed: {}", stderr);
         }
 
@@ -470,9 +470,9 @@ impl DistroBuilder {
     async fn install_desktop_environment(&self, rootfs_dir: &Path, de: &DesktopEnvironment) -> Result<()> {
         let packages = match de {
             DesktopEnvironment::Gnome => vec!["gnome".to_string()],
-            DesktopEnvironment::KDE => vec!["plasma".to_string(), "kde-applications".to_string()],
+            DesktopEnvironment::Kde => vec!["plasma".to_string(), "kde-applications".to_string()],
             DesktopEnvironment::Xfce => vec!["xfce4".to_string(), "xfce4-goodies".to_string()],
-            DesktopEnvironment::LXDE => vec!["lxde".to_string()],
+            DesktopEnvironment::Lxde => vec!["lxde".to_string()],
             DesktopEnvironment::Mate => vec!["mate".to_string()],
             DesktopEnvironment::Cinnamon => vec!["cinnamon".to_string()],
             DesktopEnvironment::Sway => vec!["sway".to_string()],
@@ -557,7 +557,7 @@ impl DistroBuilder {
 
         match self.config.bootloader.bootloader {
             Bootloader::Syslinux => self.configure_syslinux(&boot_dir).await?,
-            Bootloader::GRUB => self.configure_grub(&boot_dir).await?,
+            Bootloader::Grub => self.configure_grub(&boot_dir).await?,
             _ => println!("⚠️  Bootloader configuration not implemented yet"),
         }
 
@@ -625,8 +625,8 @@ LABEL {default}fallback
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            anyhow::bail!("mksquashfs failed: {}", stderr);
+            println!("STDOUT: {stdout}");
+            anyhow::bail!("mksquashfs failed: {stderr}");
         }
         println!("✅ SquashFS created successfully");
 
@@ -643,7 +643,9 @@ LABEL {default}fallback
                    entry.file_name().to_string_lossy().starts_with("initramfs") {
                     let dst = iso_dir.join("boot").join(entry.file_name());
                     fs::copy(entry.path(), &dst)?;
-                    println!("Copied: {} -> {}", entry.path().display(), dst.display());
+                    let src_path = entry.path().display().to_string();
+                    let dst_path = dst.display().to_string();
+                    println!("Copied: {src_path} -> {dst_path}");
                 }
             }
         }
@@ -677,11 +679,12 @@ LABEL {default}fallback
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            anyhow::bail!("xorriso failed: {}", stderr);
+            println!("STDOUT: {stdout}");
+            anyhow::bail!("xorriso failed: {stderr}");
         }
 
-        println!("✅ ISO created successfully: {}", iso_path.display());
+        let iso_display = iso_path.display();
+        println!("✅ ISO created successfully: {iso_display}");
         Ok(iso_path)
     }
 
@@ -761,7 +764,7 @@ impl Default for DistroConfig {
                 },
             },
             filesystem: FilesystemConfig {
-                root_fs: FilesystemType::SquashFS,
+                root_fs: FilesystemType::SquashFs,
                 compression: CompressionType::Xz,
                 size_limit: Some(4096), // 4GB
             },

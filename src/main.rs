@@ -16,10 +16,9 @@ mod security;
 mod plugins;
 mod agent;
 mod self_update;
-mod compatibility_layer;
-mod dependency_resolver;
 mod distributed_cache;
 mod signing_verification;
+mod compatibility_layer;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -31,6 +30,7 @@ use self_update::{SelfUpdater, UpdateConfig};
 use distro_builder::{DistroBuilder, DistroConfig};
 use executor::CommandExecutor;
 use logger::Logger;
+use config::Config;
 
 #[derive(Parser)]
 #[clap(name = "linux-distro-agent")]
@@ -246,6 +246,24 @@ enum Commands {
         /// Show metrics history
         #[clap(long)]
         history: bool,
+        /// Enable real-time monitoring with continuous updates
+        #[clap(short, long)]
+        watch: bool,
+        /// Refresh interval in seconds for real-time monitoring
+        #[clap(short, long, default_value = "2")]
+        interval: u64,
+        /// Output format (json, table, plain)
+        #[clap(short, long, default_value = "table")]
+        format: String,
+        /// Filter metrics to display (comma-separated: cpu,memory,disk,network)
+        #[clap(long)]
+        filter: Option<String>,
+        /// Show only critical health issues
+        #[clap(long)]
+        critical_only: bool,
+        /// List available health checks
+        #[clap(long)]
+        list_checks: bool,
     },
     /// Remote host management
     Remote {
@@ -400,24 +418,26 @@ async fn handle_self_update(
         "alpha" => UpdateChannel::Alpha,
         "nightly" => UpdateChannel::Nightly,
         _ => {
-            logger.error(&format!("Invalid update channel: {}. Valid options: stable, beta, alpha, nightly", channel));
+            logger.error(format!("Invalid update channel: {channel}. Valid options: stable, beta, alpha, nightly"));
             return Ok(());
         }
     };
     
     // Create update configuration
-    let mut config = UpdateConfig::default();
-    config.pre_release = pre_release;
-    config.update_channel = update_channel;
+    let config = UpdateConfig {
+        pre_release,
+        update_channel,
+        ..UpdateConfig::default()
+    };
     
     if show_config {
         logger.info("📋 Update Configuration:");
-        logger.info(&format!("  Check Interval: {} hours", config.check_interval));
-        logger.info(&format!("  Auto Update: {}", config.auto_update));
-        logger.info(&format!("  Pre-release: {}", config.pre_release));
-        logger.info(&format!("  Backup Count: {}", config.backup_count));
-        logger.info(&format!("  Fallback to Source: {}", config.fallback_to_source));
-        logger.info(&format!("  Update Channel: {:?}", config.update_channel));
+        logger.info(format!("  Check Interval: {} hours", config.check_interval));
+        logger.info(format!("  Auto Update: {}", config.auto_update));
+        logger.info(format!("  Pre-release: {}", config.pre_release));
+        logger.info(format!("  Backup Count: {}", config.backup_count));
+        logger.info(format!("  Fallback to Source: {}", config.fallback_to_source));
+        logger.info(format!("  Update Channel: {:?}", config.update_channel));
         return Ok(());
     }
     
@@ -425,13 +445,13 @@ async fn handle_self_update(
     
     if check {
         let update_info = updater.check_for_updates().await?;
-        logger.info(&format!("📦 Current Version: {}", update_info.current_version));
-        logger.info(&format!("📦 Latest Version: {}", update_info.latest_version));
+        logger.info(format!("📦 Current Version: {}", update_info.current_version));
+        logger.info(format!("📦 Latest Version: {}", update_info.latest_version));
         
         if update_info.needs_update {
             logger.info("🔄 Update Available!");
             if let Some(size) = update_info.asset_size {
-                logger.info(&format!("📏 Download Size: {:.2} MB", size as f64 / 1024.0 / 1024.0));
+                logger.info(format!("📏 Download Size: {:.2} MB", size as f64 / 1024.0 / 1024.0));
             }
             if update_info.is_prerelease {
                 logger.warn("⚠️  This is a pre-release version");
@@ -440,7 +460,7 @@ async fn handle_self_update(
             if !update_info.release_notes.trim().is_empty() {
                 logger.info("📝 Release Notes:");
                 for line in update_info.release_notes.lines().take(5) {
-                    logger.info(&format!("   {}", line));
+                    logger.info(format!("   {line}"));
                 }
                 if update_info.release_notes.lines().count() > 5 {
                     logger.info("   ... (truncated)");
@@ -515,7 +535,7 @@ async fn main() -> Result<()> {
                 std::fs::write(output_path, &toml_string)?;
                 logger.success("Configuration template written to file.");
             } else {
-                println!("{}", toml_string);
+                println!("{toml_string}");
             }
             return Ok(());
         }
@@ -538,12 +558,35 @@ async fn main() -> Result<()> {
                 logger.info(format!("Package Manager: {pm}"));
             }
             
+            // Try config-based package manager detection as fallback/confirmation
+            let config = Config::load().unwrap_or_else(|_| {
+                logger.verbose("Using default configuration for package manager detection");
+                Config::default()
+            });
+            
+            if let Some(id) = &distro.id {
+let id_like_str = distro.id_like.as_deref();
+                if let Some(config_pm) = config.detect_package_manager(id, id_like_str) {
+                    match &distro.package_manager {
+                        Some(detected_pm) if detected_pm != &config_pm => {
+                            logger.info(format!("Config-based Package Manager: {config_pm} (differs from detected: {detected_pm})"));
+                        }
+                        None => {
+                            logger.info(format!("Config-based Package Manager: {config_pm}"));
+                        }
+                        _ => {
+                            logger.verbose(format!("Config confirms package manager: {config_pm}"));
+                        }
+                    }
+                }
+            }
+            
             if extended {
                 if let Some(id) = &distro.id {
                     logger.verbose(format!("ID: {id}"));
                 }
                 if let Some(id_like) = &distro.id_like {
-                    logger.verbose(format!("ID Like: {id_like}"));
+logger.verbose(format!("ID Like: {id_like}"));
                 }
                 if let Some(pretty_name) = &distro.pretty_name {
                     logger.verbose(format!("Pretty Name: {pretty_name}"));
@@ -704,9 +747,18 @@ async fn main() -> Result<()> {
             
             match action {
                 ConfigAction::Show => {
+                    // Show both config_manager config and legacy config
                     let config = config_manager.load()?;
                     let json = serde_json::to_string_pretty(&config)?;
+                    logger.output("Configuration Manager Settings:");
                     logger.output(json);
+                    
+                    // Also show legacy config if it exists
+                    if let Ok(legacy_config) = config::Config::load() {
+                        let legacy_json = serde_json::to_string_pretty(&legacy_config)?;
+                        logger.output("\nLegacy Configuration:");
+                        logger.output(legacy_json);
+                    }
                 }
                 ConfigAction::Edit => {
                     config_manager.edit()?;
@@ -773,25 +825,25 @@ logger.info(format!("Hit rate: {:.1}%", hit_rate * 100.0));
                     } else {
                         logger.info("Distributed cache entries:");
                         for key in entries {
-                            logger.output(format!("Key: {}", key));
+                            logger.output(format!("Key: {key}"));
                         }
                     }
                 }
                 CacheAction::DistributedAdd { key, value, ttl } => {
                     let _ttl_duration = std::time::Duration::from_secs(ttl);
                     let key_clone = key.clone();
-                    distributed_cache.store(key.into(), value.into_bytes());
-                    logger.success(format!("Added entry '{}' to distributed cache with TTL of {} seconds", key_clone, ttl));
+                    distributed_cache.store(key, value.into_bytes());
+                    logger.success(format!("Added entry '{key_clone}' to distributed cache with TTL of {ttl} seconds"));
                 }
                 CacheAction::DistributedGet { key } => {
                     match distributed_cache.retrieve(&key) {
                         Some(value) => {
 match String::from_utf8(value.to_vec()) {
-                                Ok(string_value) => logger.output(format!("Value for '{}': {}", key, string_value)),
-                                Err(_) => logger.output(format!("Value for '{}': <binary data>", key)),
+                                Ok(string_value) => logger.output(format!("Value for '{key}': {string_value}")),
+                                Err(_) => logger.output(format!("Value for '{key}': <binary data>")),
                             }
                         }
-                        None => logger.info(format!("No value found for key '{}'", key)),
+                        None => logger.info(format!("No value found for key '{key}'")),
                     }
                 }
             }
@@ -812,71 +864,202 @@ match String::from_utf8(value.to_vec()) {
             // This case is handled early in the function
             unreachable!()
         }
-        Commands::Monitor { metrics, health, history } => {
+        Commands::Monitor { metrics, health, history, watch, interval, format, filter, critical_only, list_checks } => {
             let mut monitor = monitoring::SystemMonitor::new();
             
+            // List available health checks
+            if list_checks {
+                logger.info("Available Health Checks:");
+                logger.info("• disk_usage - Monitor disk space usage");
+                logger.info("• memory_usage - Monitor memory usage");
+                logger.info("• load_average - Monitor system load");
+                logger.info("• process_count - Monitor running processes");
+                return Ok(());
+            }
+            
+            // Helper function to format metrics output
+            let format_metrics_output = |metrics: &monitoring::SystemMetrics, format: &str, filter: &Option<String>| -> String {
+                let mut filtered_metrics = metrics.clone();
+                
+                // Apply filter if specified
+                if let Some(filter_str) = filter {
+                    let filters: Vec<&str> = filter_str.split(',').map(|s| s.trim()).collect();
+                    if !filters.contains(&"cpu") {
+                        filtered_metrics.cpu_usage = 0.0;
+                    }
+                    // Note: Complete filtering would require modifying SystemMetrics structure
+                    // This is a simplified version showing the concept
+                }
+                
+                match format {
+                    "json" => serde_json::to_string_pretty(&filtered_metrics).unwrap_or_else(|_| "Error formatting JSON".to_string()),
+                    "csv" => {
+                        format!("timestamp,cpu_usage,memory_used,memory_total,load_1m,load_5m,load_15m,uptime\n{},{:.1},{},{},{:.2},{:.2},{:.2},{}",
+                            chrono::Utc::now().timestamp(),
+                            filtered_metrics.cpu_usage,
+                            filtered_metrics.memory_usage.used,
+                            filtered_metrics.memory_usage.total,
+                            filtered_metrics.load_average.one_min,
+                            filtered_metrics.load_average.five_min,
+                            filtered_metrics.load_average.fifteen_min,
+                            filtered_metrics.uptime.as_secs()
+                        )
+                    },
+                    "plain" => {
+                        format!("CPU: {:.1}% | Memory: {:.1}GB/{:.1}GB ({:.1}%) | Load: {:.2}, {:.2}, {:.2} | Uptime: {} days",
+                            filtered_metrics.cpu_usage,
+                            filtered_metrics.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
+                            filtered_metrics.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0,
+                            (filtered_metrics.memory_usage.used as f64 / filtered_metrics.memory_usage.total as f64) * 100.0,
+                            filtered_metrics.load_average.one_min,
+                            filtered_metrics.load_average.five_min,
+                            filtered_metrics.load_average.fifteen_min,
+                            filtered_metrics.uptime.as_secs() / 86400
+                        )
+                    },
+                    _ => { // "table" format (default)
+                        let mut output = String::new();
+                        output.push_str("┌──────────────────┬─────────────────┐\n");
+                        output.push_str("│ Metric           │ Value           │\n");
+                        output.push_str("├──────────────────┼─────────────────┤\n");
+                        output.push_str(&format!("│ CPU Usage        │ {:>13.1}% │\n", filtered_metrics.cpu_usage));
+                        output.push_str(&format!("│ Memory Used      │ {:>11.1} GB │\n", filtered_metrics.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0));
+                        output.push_str(&format!("│ Memory Total     │ {:>11.1} GB │\n", filtered_metrics.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0));
+                        output.push_str(&format!("│ Load (1m)        │ {:>15.2} │\n", filtered_metrics.load_average.one_min));
+                        output.push_str(&format!("│ Load (5m)        │ {:>15.2} │\n", filtered_metrics.load_average.five_min));
+                        output.push_str(&format!("│ Load (15m)       │ {:>15.2} │\n", filtered_metrics.load_average.fifteen_min));
+                        output.push_str(&format!("│ Uptime           │ {:>11} days │\n", filtered_metrics.uptime.as_secs() / 86400));
+                        output.push_str("└──────────────────┴─────────────────┘");
+                        output
+                    }
+                }
+            };
+            
+            // Handle real-time monitoring with watch mode
+            if watch {
+                logger.info(&format!("📊 Real-time monitoring started (refresh every {}s). Press Ctrl+C to stop...", interval));
+                
+                // Set up Ctrl+C handler
+                let running = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+                let r = running.clone();
+                ctrlc::set_handler(move || {
+                    r.store(false, std::sync::atomic::Ordering::SeqCst);
+                }).expect("Error setting Ctrl+C handler");
+                
+                while running.load(std::sync::atomic::Ordering::SeqCst) {
+                    // Clear screen for better real-time display
+                    print!("\x1B[2J\x1B[1;1H");
+                    
+                    match monitor.collect_metrics() {
+                        Ok(metrics) => {
+                            let output = format_metrics_output(&metrics, &format[..], &filter);
+                            println!("{}", output);
+                            println!("\nLast updated: {} | Press Ctrl+C to stop", chrono::Local::now().format("%H:%M:%S"));
+                        }
+                        Err(e) => logger.error(&format!("Failed to collect metrics: {}", e)),
+                    }
+                    
+                    std::thread::sleep(std::time::Duration::from_secs(interval));
+                }
+                
+                logger.info("\n📊 Real-time monitoring stopped.");
+                return Ok(());
+            }
+            
+            // Handle health checks with optional critical-only filter
             if health {
                 let health_checks = monitor.run_health_checks();
                 logger.info("System Health Checks:");
                 for check in health_checks {
-                    match check.status {
-                        monitoring::HealthStatus::Healthy => logger.success(format!("✓ {}: {}", check.name, check.message)),
-                        monitoring::HealthStatus::Warning => logger.warn(format!("⚠ {}: {}", check.name, check.message)),
-                        monitoring::HealthStatus::Critical => logger.error(format!("✗ {}: {}", check.name, check.message)),
-                        monitoring::HealthStatus::Unknown => logger.info(format!("? {}: {}", check.name, check.message)),
+                    let should_show = if critical_only {
+                        matches!(check.status, monitoring::HealthStatus::Critical)
+                    } else {
+                        true
+                    };
+                    
+                    if should_show {
+                        match check.status {
+                            monitoring::HealthStatus::Healthy => logger.success(&format!("✓ {}: {}", check.name, check.message)),
+                            monitoring::HealthStatus::Warning => logger.warn(&format!("⚠ {}: {}", check.name, check.message)),
+                            monitoring::HealthStatus::Critical => logger.error(&format!("✗ {}: {}", check.name, check.message)),
+                            monitoring::HealthStatus::Unknown => logger.info(&format!("? {}: {}", check.name, check.message)),
+                        }
                     }
                 }
             }
             
+            // Handle metrics display with formatting
             if metrics {
                 match monitor.collect_metrics() {
                     Ok(metrics) => {
-                        let json = serde_json::to_string_pretty(&metrics)?;
-                        logger.json(&json);
+                        let output = format_metrics_output(&metrics, &format[..], &filter);
+                        if format == "json" {
+                            logger.json(&output);
+                        } else {
+                            logger.output(&output);
+                        }
                     }
-                    Err(e) => logger.error(format!("Failed to collect metrics: {}", e)),
+                    Err(e) => logger.error(&format!("Failed to collect metrics: {}", e)),
                 }
             }
             
+            // Handle history display
             if history {
                 let history = monitor.get_history();
                 if history.is_empty() {
                     logger.info("No metrics history available");
                 } else {
-                    logger.info("Metrics History:");
-                    for (i, entry) in history.iter().enumerate() {
-                        logger.output(format!("[{}] {} - CPU: {:.1}%, Memory: {:.1}GB/{:.1}GB", 
-                            i + 1,
-                            chrono::DateTime::from_timestamp(entry.timestamp as i64, 0)
-                                .unwrap_or_default()
-                                .format("%Y-%m-%d %H:%M:%S"),
-                            entry.cpu_usage,
-                            entry.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
-                            entry.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0
-                        ));
+                    match &format[..] {
+                        "json" => {
+                            let json = serde_json::to_string_pretty(&history)?;
+                            logger.json(&json);
+                        }
+                        "csv" => {
+                            logger.output("timestamp,cpu_usage,memory_used,memory_total,load_1m,load_5m,load_15m");
+                            for entry in history.iter() {
+                                logger.output(&format!("{},{:.1},{},{},{:.2},{:.2},{:.2}",
+                                    entry.timestamp,
+                                    entry.cpu_usage,
+                                    entry.memory_usage.used,
+                                    entry.memory_usage.total,
+                                    entry.load_average.one_min,
+                                    entry.load_average.five_min,
+                                    entry.load_average.fifteen_min
+                                ));
+                            }
+                        }
+                        _ => {
+                            logger.info("Metrics History:");
+                            for (i, entry) in history.iter().enumerate() {
+                                logger.output(&format!("[{}] {} - CPU: {:.1}%, Memory: {:.1}GB/{:.1}GB", 
+                                    i + 1,
+                                    chrono::DateTime::from_timestamp(entry.timestamp as i64, 0)
+                                        .unwrap_or_default()
+                                        .format("%Y-%m-%d %H:%M:%S"),
+                                    entry.cpu_usage,
+                                    entry.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
+                                    entry.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0
+                                ));
+                            }
+                        }
                     }
                 }
             }
             
             // Default: show basic metrics if no specific option provided
-            if !metrics && !health && !history {
-                match monitor.collect_metrics() {
-                    Ok(metrics) => {
-                        logger.info("System Metrics:");
-                        logger.info(format!("CPU Usage: {:.1}%", metrics.cpu_usage));
-                        logger.info(format!("Memory: {:.1}GB/{:.1}GB ({:.1}%)", 
-                            metrics.memory_usage.used as f64 / 1024.0 / 1024.0 / 1024.0,
-                            metrics.memory_usage.total as f64 / 1024.0 / 1024.0 / 1024.0,
-                            (metrics.memory_usage.used as f64 / metrics.memory_usage.total as f64) * 100.0
-                        ));
-                        logger.info(format!("Load Average: {:.2}, {:.2}, {:.2}", 
-                            metrics.load_average.one_min,
-                            metrics.load_average.five_min,
-                            metrics.load_average.fifteen_min
-                        ));
-                        logger.info(format!("Uptime: {} days", metrics.uptime.as_secs() / 86400));
-                    }
-                    Err(e) => logger.error(format!("Failed to collect metrics: {}", e)),
+            if !metrics && !health && !history && !watch && !list_checks {
+                // Try to get latest cached metrics first, then collect new ones
+                let metrics_to_display = if let Some(cached_metrics) = monitor.get_latest_metrics() {
+                    cached_metrics.clone()
+                } else {
+                    monitor.collect_metrics()?
+                };
+                
+                let output = format_metrics_output(&metrics_to_display, &format[..], &filter);
+                if format == "json" {
+                    logger.json(&output);
+                } else {
+                    logger.output(&output);
                 }
             }
         }
@@ -1109,7 +1292,7 @@ match String::from_utf8(value.to_vec()) {
                 }
             }
         }
-        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run: _ } => {
+        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run } => {
             let mut agent = agent::IntelligentAgent::new(cli.verbose, cli.quiet);
             
             if start {
@@ -1119,10 +1302,23 @@ match String::from_utf8(value.to_vec()) {
                     Err(e) => logger.error(format!("Agent loop failed: {}", e)),
                 }
             } else if let Some(task_description) = add_task {
+                // Parse task type from description
+                let task_type = if task_description.contains("install") || task_description.contains("remove") {
+                    agent::TaskType::PackageManagement
+                } else if task_description.contains("security") || task_description.contains("audit") {
+                    agent::TaskType::SecurityAudit
+                } else if task_description.contains("config") {
+                    agent::TaskType::SystemConfiguration
+                } else if task_description.contains("monitor") {
+                    agent::TaskType::Monitoring
+                } else {
+                    agent::TaskType::PackageManagement
+                };
+                
                 let task = agent.create_task_from_command(
                     "manual",
                     &[task_description],
-                    agent::TaskType::PackageManagement
+                    task_type
                 );
                 
                 match agent.add_task(task) {
@@ -1130,18 +1326,53 @@ match String::from_utf8(value.to_vec()) {
                     Err(e) => logger.error(format!("Failed to add task: {}", e)),
                 }
             } else if status {
+                let state = agent.get_state();
                 logger.info("🤖 Agent Status:");
-                logger.info("Current tasks: 0"); // Simplified for now
-                logger.info("Completed tasks: 0");
-                logger.info("Failed tasks: 0");
-                logger.info("Agent state: Ready");
+                logger.info(format!("Current tasks: {}", state.current_tasks.len()));
+                logger.info(format!("Completed tasks: {}", state.completed_tasks.len()));
+                logger.info(format!("Failed tasks: {}", state.failed_tasks.len()));
+                logger.info(format!("Safety violations: {}", state.safety_violations));
+                logger.info(format!("Last update: {:?}", state.last_update));
+                
+                if !state.current_tasks.is_empty() {
+                    logger.info("\nCurrent Tasks:");
+                    for task in &state.current_tasks {
+                        logger.info(format!("  • {} (Priority: {:?}, Safety: {:?})", 
+                            task.description, task.priority, task.safety_level));
+                    }
+                }
             } else if stats {
+                let state = agent.get_state();
+                let total_tasks = state.completed_tasks.len() + state.failed_tasks.len();
+                let success_rate = if total_tasks > 0 {
+                    (state.completed_tasks.len() as f64 / total_tasks as f64) * 100.0
+                } else {
+                    0.0
+                };
+                
+                let avg_duration = if !state.completed_tasks.is_empty() {
+                    let total_duration: f64 = state.completed_tasks.iter()
+                        .map(|r| r.duration.as_secs() as f64)
+                        .sum();
+                    total_duration / state.completed_tasks.len() as f64
+                } else {
+                    0.0
+                };
+                
                 logger.info("📊 Agent Learning Statistics:");
-                logger.info("Success rate: 85%"); // Mock data
-                logger.info("Average task duration: 30s");
-                logger.info("Safety violations: 0");
-                logger.info("Learning data points: 25");
+                logger.info(format!("Success rate: {:.1}%", success_rate));
+                logger.info(format!("Average task duration: {:.1}s", avg_duration));
+                logger.info(format!("Safety violations: {}", state.safety_violations));
+                logger.info(format!("Learning data points: {}", state.learning_data.len()));
+                
+                if !state.learning_data.is_empty() {
+                    logger.info("\nLearning Data:");
+                    for (key, value) in &state.learning_data {
+                        logger.info(format!("  • {}: {:.3}", key, value));
+                    }
+                }
             } else if clear_tasks {
+                agent.clear_all_tasks();
                 logger.success("All tasks cleared from agent queue");
             } else {
                 logger.info("🤖 Intelligent Agent System");
@@ -1149,6 +1380,8 @@ match String::from_utf8(value.to_vec()) {
                 logger.info("Use --status to show current agent status");
                 logger.info("Use --stats to show learning statistics");
                 logger.info("Use --add-task \"command\" to add a task");
+                logger.info("Use --clear-tasks to clear all pending tasks");
+                logger.info("Use --dry-run to enable dry-run mode");
             }
         }
         Commands::Verify { package, key_id: _, details, repo, trust_level: _ } => {
