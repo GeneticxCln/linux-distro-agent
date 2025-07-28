@@ -886,6 +886,107 @@ async fn main() -> Result<()> {
                 }
             }
         }
+        Commands::Security { audit, json, severity, category } => {
+            let mut security_auditor = security::SecurityAuditor::new();
+
+            if audit {
+                logger.info("Running full security audit...");
+                match security_auditor.run_full_audit() {
+                    Ok(audit_result) => {
+                        logger.info("Security Audit Results:");
+                        logger.info(format!("Total Issues: {}", audit_result.findings.len()));
+                        let filtered_issues = audit_result.filter_by(severity, category);
+                        for issue in &filtered_issues {
+                            logger.info(format!("[{}] {} - {}", issue.severity, issue.category, issue.description));
+                        }
+                    }
+                    Err(e) => logger.error(format!("Security audit failed: {}", e)),
+                }
+            }
+
+            if json {
+                logger.info("Outputting security report in JSON format...");
+                match security_auditor.get_security_report_json() {
+                    Ok(json_report) => logger.output(json_report),
+                    Err(e) => logger.error(format!("Failed to generate JSON report: {}", e)),
+                }
+            }
+        }
+        Commands::Plugin { list, info, enable, disable, exec, args, install, uninstall, create, plugin_type } => {
+            let mut plugin_manager = plugins::PluginManager::new()?;
+
+            if list {
+                logger.info("Available plugins:");
+                let plugins = plugin_manager.list_plugins();
+                for plugin in plugins {
+                    let status = if plugin.config.enabled { "✓ Enabled" } else { "○ Disabled" };
+                    logger.info(format!("{:<20} {:<10} {} - {}", plugin.metadata.name, plugin.metadata.version, status, plugin.metadata.description));
+                }
+            }
+
+            if let Some(plugin_name) = info {
+                logger.info(format!("Retrieving information for plugin: {}", plugin_name));
+                match plugin_manager.get_plugin(&plugin_name) {
+                    Some(info) => logger.info(format!("Plugin Info: Name: {}, Version: {}, Enabled: {}", info.metadata.name, info.metadata.version, info.config.enabled)),
+                    None => logger.error(format!("Plugin '{}' not found", plugin_name)),
+                }
+            }
+
+            if let Some(plugin_name) = enable {
+                match plugin_manager.enable_plugin(&plugin_name) {
+                    Ok(()) => logger.success(format!("Plugin '{}' enabled", plugin_name)),
+                    Err(e) => logger.error(format!("Failed to enable plugin '{}': {}", plugin_name, e)),
+                }
+            }
+
+            if let Some(plugin_name) = disable {
+                match plugin_manager.disable_plugin(&plugin_name) {
+                    Ok(()) => logger.success(format!("Plugin '{}' disabled", plugin_name)),
+                    Err(e) => logger.error(format!("Failed to disable plugin '{}': {}", plugin_name, e)),
+                }
+            }
+
+            if let Some(plugin_name) = exec {
+                match plugin_manager.execute_plugin(&plugin_name, &args) {
+                    Ok(output) => logger.output(output),
+                    Err(e) => logger.error(format!("Failed to execute plugin '{}': {}", plugin_name, e)),
+                }
+            }
+
+            if let Some(plugin_path) = install {
+                match plugin_manager.install_plugin(&plugin_path) {
+                    Ok(()) => logger.success(format!("Plugin installed from '{}'", plugin_path.display())),
+                    Err(e) => logger.error(format!("Failed to install plugin: {}", e)),
+                }
+            }
+
+            if let Some(plugin_name) = uninstall {
+                match plugin_manager.uninstall_plugin(&plugin_name) {
+                    Ok(()) => logger.success(format!("Plugin '{}' uninstalled", plugin_name)),
+                    Err(e) => logger.error(format!("Failed to uninstall plugin '{}': {}", plugin_name, e)),
+                }
+            }
+
+            if let Some(plugin_name) = create {
+                let plugin_type_enum = match plugin_type.as_str() {
+                    "command" => plugins::PluginType::Command,
+                    "monitor" => plugins::PluginType::Monitor,
+                    "security" => plugins::PluginType::Security,
+                    "package" => plugins::PluginType::PackageManager,
+                    "distro" => plugins::PluginType::Distro,
+                    "integration" => plugins::PluginType::Integration,
+                    _ => {
+                        logger.error(format!("Unknown plugin type: {}. Available types: command, monitor, security, package, distro, integration", plugin_type));
+                        return Ok(());
+                    }
+                };
+                
+                match plugin_manager.create_plugin_template(&plugin_name, plugin_type_enum) {
+                    Ok(template_path) => logger.success(format!("Plugin template created at: {}", template_path.display())),
+                    Err(e) => logger.error(format!("Failed to create plugin template: {}", e)),
+                }
+            }
+        }
     }
 
     Ok(())
