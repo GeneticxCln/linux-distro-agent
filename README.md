@@ -197,6 +197,25 @@ The binary will be available at `target/release/linux-distro-agent`.
 sudo cp target/release/linux-distro-agent /usr/local/bin/
 ```
 
+### 🏠 Home Manager Integration
+
+For Nix users, LDA integrates seamlessly with Home Manager:
+
+```bash
+# Quick setup with automated script
+./scripts/setup-home-manager.sh
+
+# Or manually add to your home.nix (see HOME_MANAGER_INTEGRATION.md)
+```
+
+**Benefits:**
+- 📦 Hybrid package management (native + Nix packages)
+- 🔄 Reproducible user environments
+- 🎯 Declarative configuration management
+- 🛠️ `lda-hm` helper script for Home Manager operations
+
+See [HOME_MANAGER_INTEGRATION.md](HOME_MANAGER_INTEGRATION.md) for detailed setup instructions.
+
 ## 🚀 Quick Start
 
 ```bash

@@ -1,0 +1,271 @@
+#!/bin/bash
+# LDA Home Manager Integration Script
+# Part of the linux-distro-agent project
+# This script provides seamless Home Manager package management
+
+set -euo pipefail
+
+HM_CONFIG="$HOME/.config/home-manager/home.nix"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Helper functions
+log_info() {
+    echo -e "${BLUE}🔍${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}✅${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠️${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}❌${NC} $1"
+}
+
+# Check if Home Manager is available
+check_home_manager() {
+    if ! command -v home-manager &> /dev/null; then
+        log_error "Home Manager is not installed or not in PATH"
+        exit 1
+    fi
+    
+    if [[ ! -f "$HM_CONFIG" ]]; then
+        log_error "Home Manager configuration not found at $HM_CONFIG"
+        exit 1
+    fi
+}
+
+# Helper function to add package to home.nix
+add_package() {
+    local package="$1"
+    local temp_file
+    temp_file=$(mktemp)
+    
+    # Check if package already exists
+    if grep -q "pkgs\.$package" "$HM_CONFIG" || grep -q "\"$package\"" "$HM_CONFIG"; then
+        log_warning "Package '$package' might already be in your Home Manager configuration"
+        return 1
+    fi
+    
+    # Find the packages list and add the package
+    awk -v pkg="$package" '
+    /home\.packages = with pkgs; \[/ {
+        print $0
+        in_packages = 1
+        next
+    }
+    in_packages && /\];$/ {
+        print "    " pkg "  # Added by lda-hm on " strftime("%Y-%m-%d")
+        print $0
+        in_packages = 0
+        next
+    }
+    { print }
+    ' "$HM_CONFIG" > "$temp_file"
+    
+    if [[ $? -eq 0 ]]; then
+        mv "$temp_file" "$HM_CONFIG"
+        return 0
+    else
+        rm -f "$temp_file" 
+        return 1
+    fi
+}
+
+# Helper function to remove package from home.nix
+remove_package() {
+    local package="$1"
+    local temp_file
+    temp_file=$(mktemp)
+    
+    # Remove the package line (handles both formats)
+    sed "/^\s*$package\s*#.*Added by lda-hm/d; /^\s*$package\s*$/d" "$HM_CONFIG" > "$temp_file"
+    
+    if [[ $? -eq 0 ]]; then
+        mv "$temp_file" "$HM_CONFIG"
+        return 0
+    else
+        rm -f "$temp_file"
+        return 1
+    fi
+}
+
+# Check if nix flakes are available
+check_nix_flakes() {
+    if ! nix --help 2>/dev/null | grep -q "experimental-features"; then
+        return 1
+    fi
+    return 0
+}
+
+# Main command handlers
+cmd_install() {
+    local package="$1"
+    
+    log_info "Searching for '$package' in nixpkgs..."
+    
+    # Check if package exists in nixpkgs
+    if check_nix_flakes; then
+        search_result=$(nix search nixpkgs "$package" --extra-experimental-features nix-command --extra-experimental-features flakes 2>/dev/null || true)
+    else
+        search_result=$(nix-env -qaP | grep -i "$package" || true)
+    fi
+    
+    if [[ -n "$search_result" ]]; then
+        log_success "Found '$package' in nixpkgs"
+        
+        # Add to home.nix
+        if add_package "$package"; then
+            log_success "Added '$package' to $HM_CONFIG"
+            log_info "Running 'home-manager switch' to install..."
+            
+            if home-manager switch; then
+                log_success "Successfully installed '$package' via Home Manager!"
+            else
+                log_error "Home Manager switch failed. Check your configuration."
+                exit 1
+            fi
+        else
+            log_error "Failed to add package to configuration"
+            exit 1
+        fi
+    else
+        log_error "Package '$package' not found in nixpkgs"
+        echo "💡 Try: nix search nixpkgs $package"
+        exit 1
+    fi
+}
+
+cmd_remove() {
+    local package="$1"
+    
+    log_info "Removing '$package' from Home Manager..."
+    
+    if remove_package "$package"; then
+        log_success "Removed '$package' from $HM_CONFIG"
+        log_info "Running 'home-manager switch' to apply changes..."
+        
+        if home-manager switch; then
+            log_success "Successfully removed '$package' via Home Manager!"
+        else
+            log_error "Home Manager switch failed. Check your configuration."
+            exit 1
+        fi
+    else
+        log_error "Failed to remove package from configuration"
+        exit 1
+    fi
+}
+
+cmd_search() {
+    local query="$1"
+    
+    log_info "Searching nixpkgs for '$query'..."
+    
+    if check_nix_flakes; then
+        nix search nixpkgs "$query" --extra-experimental-features nix-command --extra-experimental-features flakes
+    else
+        nix-env -qaP | grep -i "$query"
+    fi
+}
+
+cmd_update() {
+    log_info "Updating Home Manager packages..."
+    if home-manager switch; then
+        log_success "Home Manager update complete!"
+    else
+        log_error "Home Manager update failed"
+        exit 1
+    fi
+}
+
+cmd_list() {
+    echo "📦 Packages managed by Home Manager:"
+    if [[ -f ~/.local/state/nix/profiles/home-manager/manifest.json ]]; then
+        nix-env -q --profile ~/.local/state/nix/profiles/home-manager
+    else
+        log_warning "No Home Manager profile found"
+    fi
+}
+
+cmd_edit() {
+    log_info "Opening Home Manager configuration..."
+    ${EDITOR:-nvim} "$HM_CONFIG"
+}
+
+cmd_switch() {
+    log_info "Running home-manager switch..."
+    home-manager switch
+}
+
+cmd_help() {
+    cat << EOF
+🏠 LDA Home Manager Integration
+
+Usage: lda-hm <command> [args]
+
+Commands:
+  install <package>  Install a package via Home Manager
+  remove <package>   Remove a package via Home Manager
+  search <query>     Search for packages in nixpkgs
+  update             Update all Home Manager packages
+  list               List installed Home Manager packages
+  edit               Edit Home Manager configuration
+  switch             Run home-manager switch
+  help               Show this help message
+
+Examples:
+  lda-hm install ripgrep       # Install ripgrep
+  lda-hm search terminal       # Search for terminal apps
+  lda-hm remove old-package    # Remove a package
+  lda-hm edit                  # Edit Home Manager config
+
+This script is part of the linux-distro-agent project.
+EOF
+}
+
+# Main script logic
+main() {
+    check_home_manager
+    
+    case "${1:-help}" in
+        "install")
+            [[ $# -lt 2 ]] && { log_error "Usage: lda-hm install <package>"; exit 1; }
+            cmd_install "$2"
+            ;;
+        "remove")
+            [[ $# -lt 2 ]] && { log_error "Usage: lda-hm remove <package>"; exit 1; }
+            cmd_remove "$2"
+            ;;
+        "search")
+            [[ $# -lt 2 ]] && { log_error "Usage: lda-hm search <query>"; exit 1; }
+            cmd_search "$2"
+            ;;
+        "update")
+            cmd_update
+            ;;
+        "list")
+            cmd_list
+            ;;
+        "edit")
+            cmd_edit
+            ;;
+        "switch")
+            cmd_switch
+            ;;
+        "help"|"-h"|"--help"|*)
+            cmd_help
+            ;;
+    esac
+}
+
+main "$@"
