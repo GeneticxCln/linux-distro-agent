@@ -46,6 +46,7 @@ pub struct ReleaseInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ReleaseAsset {
     pub name: String,
+    #[serde(rename = "browser_download_url")]
     pub download_url: String,
     pub size: u64,
     pub content_type: String,
