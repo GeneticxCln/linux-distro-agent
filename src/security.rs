@@ -1,8 +1,6 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
 use chrono::{DateTime, Utc};
 
@@ -123,7 +121,7 @@ impl SecurityAuditor {
 
         for file_path in sensitive_files {
             if let Ok(metadata) = fs::metadata(file_path) {
-                let mode = metadata.permissions();
+                let _mode = metadata.permissions();
                 
                 // Check for world-writable files
                 if self.is_world_writable(&metadata) {
@@ -367,7 +365,7 @@ impl SecurityAuditor {
         let ssh_config_path = "/etc/ssh/sshd_config";
         if let Ok(config_content) = fs::read_to_string(ssh_config_path) {
             let mut permit_root_login = true;
-            let mut password_auth = true;
+            let mut _password_auth = true;
             let mut permit_empty_passwords = false;
 
             for line in config_content.lines() {
@@ -376,7 +374,7 @@ impl SecurityAuditor {
                     permit_root_login = false;
                 }
                 if line.starts_with("PasswordAuthentication") && line.contains("no") {
-                    password_auth = false;
+                    _password_auth = false;
                 }
                 if line.starts_with("PermitEmptyPasswords") && line.contains("yes") {
                     permit_empty_passwords = true;

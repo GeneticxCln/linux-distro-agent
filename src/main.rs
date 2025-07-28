@@ -17,6 +17,9 @@ mod plugins;
 mod agent;
 mod self_update;
 mod compatibility_layer;
+mod dependency_resolver;
+mod distributed_cache;
+mod signing_verification;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -71,6 +74,27 @@ enum CacheAction {
     Clear,
     /// Show cached entries
     List,
+    /// Show distributed cache status
+    DistributedStatus,
+    /// Clear distributed cache
+    DistributedClear,
+    /// List distributed cache entries
+    DistributedList,
+    /// Add entry to distributed cache
+    DistributedAdd {
+        /// Cache key
+        key: String,
+        /// Cache value
+        value: String,
+        /// TTL in seconds
+        #[clap(short, long, default_value = "3600")]
+        ttl: u64,
+    },
+    /// Get entry from distributed cache
+    DistributedGet {
+        /// Cache key
+        key: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -333,6 +357,24 @@ enum Commands {
         /// Enable dry-run mode (tasks won't be executed)
         #[clap(long)]
         dry_run: bool,
+    },
+    /// Package signing and verification
+    Verify {
+        /// Path to the package file to verify
+        #[clap(short, long)]
+        package: Option<PathBuf>,
+        /// GPG key ID to verify against
+        #[clap(short, long)]
+        key_id: Option<String>,
+        /// Show signature details
+        #[clap(long)]
+        details: bool,
+        /// Verify repository signatures
+        #[clap(long)]
+        repo: bool,
+        /// Trust level for verification (low, medium, high)
+        #[clap(long, default_value = "medium")]
+        trust_level: String,
     },
 }
 
@@ -682,12 +724,13 @@ async fn main() -> Result<()> {
         }
         Commands::Cache { action } => {
             let mut cache_manager = cache::CacheManager::new()?;
+let mut distributed_cache = distributed_cache::PackageCache::new(std::time::Duration::from_secs(3600));
             
             match action {
                 CacheAction::Status => {
                     let status = cache_manager.status()?;
                     logger.info(format!("Cache entries: {}", status.entry_count));
-                    logger.info(format!("Cache size: {} bytes", status.total_size));
+logger.info(format!("Cache size: {} bytes", status.total_size));
                     logger.info(format!("Last updated: {}", 
                         status.last_updated.map_or("Never".to_string(), 
                             |ts| ts.format("%Y-%m-%d %H:%M:%S").to_string())
@@ -708,6 +751,47 @@ async fn main() -> Result<()> {
                                 entry.created_at.format("%Y-%m-%d %H:%M:%S")
                             ));
                         }
+                    }
+                }
+                CacheAction::DistributedStatus => {
+                    let status = distributed_cache.get_cache_stats();
+                    logger.info("Distributed Cache Status:");
+                    logger.info(format!("Total entries: {}", status.total_entries));
+logger.info(format!("Total size: {} bytes", status.total_size_bytes));
+let hit_rate = status.hit_count as f64 / (status.hit_count + status.miss_count) as f64;
+logger.info(format!("Hit rate: {:.1}%", hit_rate * 100.0));
+                    logger.info(format!("Last cleanup: {:?}", status.last_cleanup));
+                }
+                CacheAction::DistributedClear => {
+                    distributed_cache.clear_cache();
+                    logger.success("Distributed cache cleared");
+                }
+                CacheAction::DistributedList => {
+                    let entries = distributed_cache.list_entries();
+                    if entries.is_empty() {
+                        logger.info("No distributed cache entries found");
+                    } else {
+                        logger.info("Distributed cache entries:");
+                        for key in entries {
+                            logger.output(format!("Key: {}", key));
+                        }
+                    }
+                }
+                CacheAction::DistributedAdd { key, value, ttl } => {
+                    let _ttl_duration = std::time::Duration::from_secs(ttl);
+                    let key_clone = key.clone();
+                    distributed_cache.store(key.into(), value.into_bytes());
+                    logger.success(format!("Added entry '{}' to distributed cache with TTL of {} seconds", key_clone, ttl));
+                }
+                CacheAction::DistributedGet { key } => {
+                    match distributed_cache.retrieve(&key) {
+                        Some(value) => {
+match String::from_utf8(value.to_vec()) {
+                                Ok(string_value) => logger.output(format!("Value for '{}': {}", key, string_value)),
+                                Err(_) => logger.output(format!("Value for '{}': <binary data>", key)),
+                            }
+                        }
+                        None => logger.info(format!("No value found for key '{}'", key)),
                     }
                 }
             }
@@ -1025,7 +1109,7 @@ async fn main() -> Result<()> {
                 }
             }
         }
-        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run } => {
+        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run: _ } => {
             let mut agent = agent::IntelligentAgent::new(cli.verbose, cli.quiet);
             
             if start {
@@ -1065,6 +1149,51 @@ async fn main() -> Result<()> {
                 logger.info("Use --status to show current agent status");
                 logger.info("Use --stats to show learning statistics");
                 logger.info("Use --add-task \"command\" to add a task");
+            }
+        }
+        Commands::Verify { package, key_id: _, details, repo, trust_level: _ } => {
+            use signing_verification::SigningVerificationManager;
+            
+            let config_dir = dirs::config_dir()
+                .unwrap_or_else(|| std::path::PathBuf::from("."))
+                .join("linux-distro-agent");
+            
+            let manager = match SigningVerificationManager::new(&config_dir) {
+                Ok(m) => m,
+                Err(e) => {
+                    logger.error(format!("Failed to initialize signing verification: {}", e));
+                    return Ok(());
+                }
+            };
+            
+            if let Some(package_path) = package {
+                match manager.get_signing_status(&package_path) {
+                    Ok(status) => {
+                        logger.info(format!("Package verification result: {}", status));
+                        
+                        if details {
+                            match manager.verify_package_signature(&package_path, None) {
+                                Ok(sig_info) => {
+                                    logger.info(format!("Signature Type: {:?}", sig_info.signature_type));
+                                    logger.info(format!("Key ID: {}", sig_info.key_id));
+                                    logger.info(format!("Fingerprint: {}", sig_info.fingerprint));
+                                    logger.info(format!("Valid: {}", sig_info.valid));
+                                    logger.info(format!("Trust Level: {:?}", sig_info.trust_level));
+                                    logger.info(format!("Timestamp: {}", sig_info.timestamp));
+                                }
+                                Err(e) => logger.error(format!("Failed to get signature details: {}", e)),
+                            }
+                        }
+                    }
+                    Err(e) => logger.error(format!("Package verification failed: {}", e)),
+                }
+            } else if repo {
+                logger.info("Repository signature verification not yet implemented");
+            } else {
+                logger.info("Package Signing and Verification:");
+                logger.info("Use --package <path> to verify a package signature");
+                logger.info("Use --details for detailed signature information");
+                logger.info("Use --repo to verify repository signatures");
             }
         }
     }

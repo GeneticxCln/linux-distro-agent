@@ -237,7 +237,7 @@ impl PluginManager {
         }
     }
 
-    fn check_plugin_permissions(&self, plugin: &PluginInfo, args: &[String]) -> Result<()> {
+    fn check_plugin_permissions(&self, plugin: &PluginInfo, _args: &[String]) -> Result<()> {
         // This is a simplified permission check
         // In a real implementation, you'd have more sophisticated sandboxing
         

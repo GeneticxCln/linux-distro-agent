@@ -1,7 +1,6 @@
 use anyhow::{Result, Context};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::process::Command as AsyncCommand;
 use crate::system_config::RemoteConfig;
@@ -68,7 +67,7 @@ impl RemoteController {
             anyhow::bail!("SSH support is disabled in configuration");
         }
 
-        let mut results = Vec::new();
+        let results;
 
         if task.parallel {
             results = self.execute_parallel(task).await?;
@@ -111,8 +110,8 @@ impl RemoteController {
         let mut results = Vec::new();
 
         for host_name in &task.hosts {
-            if let Some(host) = self.hosts.get(host_name) {
-                let result = Self::execute_on_host(&self.config, host, task).await?;
+            if let Some(_host) = self.hosts.get(host_name) {
+                let result = Self::execute_on_host(&self.config, _host, task).await?;
                 results.push(result);
             }
         }
@@ -155,7 +154,7 @@ impl RemoteController {
         ssh_cmd.arg(&command);
 
         // Set timeout if specified
-        if let Some(timeout) = task.timeout {
+        if let Some(_timeout) = task.timeout {
             ssh_cmd.kill_on_drop(true);
         }
 
@@ -232,7 +231,7 @@ user = "backup"
     }
 
     pub async fn test_connectivity(&self, host_name: &str) -> Result<bool> {
-        if let Some(host) = self.hosts.get(host_name) {
+        if let Some(_host) = self.hosts.get(host_name) {
             let test_task = RemoteTask {
                 id: "connectivity-test".to_string(),
                 command: "echo 'Connection successful'".to_string(),

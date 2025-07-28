@@ -253,7 +253,7 @@ impl IntelligentAgent {
         // Check system resources
         let cpu_usage = self.get_cpu_usage().await?;
         let memory_usage = self.get_memory_usage().await?;
-        let disk_usage = self.get_disk_usage().await?;
+        let _disk_usage = self.get_disk_usage().await?;
         
         // Adjust execution strategy based on system load
         if cpu_usage > 80.0 || memory_usage > 90.0 {

@@ -84,7 +84,7 @@ pub enum Bootloader {
     GRUB,
     Systemd,
     Syslinux,
-    rEFInd,
+    REfind,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -600,7 +600,7 @@ LABEL {default}fallback
         
         let iso_dir = self.work_dir.join("iso");
         let rootfs_dir = self.work_dir.join("rootfs");
-        let boot_dir = self.work_dir.join("boot");
+        let _boot_dir = self.work_dir.join("boot");
         
         // Create SquashFS from rootfs
         println!("Creating SquashFS filesystem...");
