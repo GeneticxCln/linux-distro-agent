@@ -1,5 +1,6 @@
 mod config;
 mod config_manager;
+mod config_wizard;
 mod distro;
 mod distro_builder;
 mod executor;
@@ -213,6 +214,15 @@ enum Commands {
         /// Configuration template type
         #[clap(long, default_value = "minimal")]
         template: String,
+    },
+    /// Interactive configuration wizard for building distributions
+    ConfigWizard {
+        /// Output file path for generated configuration
+        #[clap(short = 'o', long)]
+        output: Option<PathBuf>,
+        /// Skip confirmation prompts
+        #[clap(short = 'y', long)]
+        yes: bool,
     },
     /// Update LDA to the latest version
     SelfUpdate {
@@ -539,6 +549,36 @@ async fn main() -> Result<()> {
             }
             return Ok(());
         }
+        Commands::ConfigWizard { output, yes: _ } => {
+            use config_wizard::ConfigWizard;
+            
+            logger.info("Starting interactive distribution configuration wizard...");
+            match ConfigWizard::run() {
+                Ok(config) => {
+                    let toml_string = toml::to_string_pretty(&config)?;
+                    if let Some(output_path) = output {
+                        std::fs::write(output_path, &toml_string)?;
+                        logger.success(format!("Configuration saved to: {}", output_path.display()));
+                    } else {
+                        // Save to default location
+                        let default_path = format!("{}-config.toml", config.name.to_lowercase().replace(' ', "-"));
+                        std::fs::write(&default_path, &toml_string)?;
+                        logger.success(format!("Configuration saved to: {}", default_path));
+                    }
+                    
+                    logger.info("\n💡 Next steps:");
+                    logger.info("   1. Review the generated configuration file");
+                    logger.info("   2. Run: lda build-distro -c <config-file>");
+                    logger.info("   3. Wait for the build to complete");
+                    logger.info("   4. Your custom ISO will be available in the output directory");
+                }
+                Err(e) => {
+                    logger.error(format!("Configuration wizard failed: {}", e));
+                    return Err(e);
+                }
+            }
+            return Ok(());
+        }
         Commands::SelfUpdate { force, dry_run, check, pre_release, channel, config } => {
             return handle_self_update(&logger, *force, *dry_run, *check, *pre_release, channel, *config).await;
         }
@@ -857,6 +897,10 @@ match String::from_utf8(value.to_vec()) {
             unreachable!()
         }
         Commands::GenerateConfig { .. } => {
+            // This case is handled early in the function
+            unreachable!()
+        }
+        Commands::ConfigWizard { .. } => {
             // This case is handled early in the function
             unreachable!()
         }

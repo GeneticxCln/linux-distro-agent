@@ -1,0 +1,39 @@
+name = "TestLinux"
+version = "1.0"
+description = "Test build for enhanced logging"
+architecture = "x86_64"
+base_system = "Arch"
+
+[packages]
+essential = [
+    "base",
+    "linux",
+    "linux-firmware",
+    "networkmanager",
+    "sudo",
+]
+desktop_environment = "None"
+additional_packages = [
+    "vim",
+    "nano",
+]
+custom_repositories = []
+
+[kernel]
+kernel_type = "Vanilla"
+modules = []
+
+[bootloader]
+bootloader = "Syslinux"
+timeout = 30
+default_entry = "linux"
+
+[branding.colors]
+primary = "#0078d4"
+secondary = "#005a9e"
+accent = "#00bcf2"
+
+[filesystem]
+root_fs = "SquashFs"
+compression = "Gzip"  # Faster compression for testing
+size_limit = 2048     # 2GB limit for smaller test build
