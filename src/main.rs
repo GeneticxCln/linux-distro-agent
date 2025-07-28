@@ -359,23 +359,84 @@ fn handle_self_update(logger: &Logger, force: bool, dry_run: bool) -> Result<()>
     
     logger.info("Downloading and installing the latest version...");
     
-    // Download and execute the install script
-    let install_cmd = "curl -fsSL https://raw.githubusercontent.com/GeneticxCln/linux-distro-agent/main/install.sh | bash";
+    // Get the current binary path
+    let current_exe = std::env::current_exe()?;
+    let current_exe_str = current_exe.to_str().unwrap_or("/usr/local/bin/linux-distro-agent");
     
-    logger.verbose(format!("Running: {}", install_cmd));
+    // Create a script that will handle the update after this process exits
+    let update_script = format!(r#"
+#!/bin/bash
+set -e
+
+echo "[INFO] Starting LDA update process..."
+echo "[INFO] Current binary: {}"
+
+# Wait a moment for the current process to exit
+sleep 2
+
+# Create temporary directory for the build
+TEMP_DIR=$(mktemp -d)
+echo "[INFO] Using temporary directory: $TEMP_DIR"
+
+# Clone and build the latest version
+echo "[INFO] Cloning repository..."
+cd "$TEMP_DIR"
+git clone https://github.com/GeneticxCln/linux-distro-agent.git lda
+cd lda
+
+echo "[INFO] Building optimized binary..."
+cargo build --release
+
+if [ ! -f "target/release/linux-distro-agent" ]; then
+    echo "[ERROR] Build failed - binary not found"
+    exit 1
+fi
+
+# Backup current binary if it exists
+if [ -f "{}" ]; then
+    echo "[INFO] Creating backup of current binary..."
+    sudo cp "{}" "{}.backup-$(date +%s)"
+fi
+
+# Install new binary
+echo "[INFO] Installing new binary..."
+sudo cp "target/release/linux-distro-agent" "{}"
+sudo chmod +x "{}"
+
+# Cleanup
+echo "[INFO] Cleaning up temporary files..."
+cd /
+rm -rf "$TEMP_DIR"
+
+echo "[SUCCESS] 🎉 LDA has been successfully updated to version {}!"
+echo "[INFO] You can now run 'lda --version' to verify the new version."
+echo "[INFO] Run 'hash -r' if you encounter issues with command not found."
+
+# Clean up this script
+rm -f "$0"
+"#, current_exe_str, current_exe_str, current_exe_str, current_exe_str, current_exe_str, current_exe_str, latest_version);
     
-    let status = Command::new("bash")
-        .args(["-c", install_cmd])
+    // Write the update script to a temporary file
+    let script_path = "/tmp/lda-update.sh";
+    std::fs::write(script_path, update_script)?;
+    
+    // Make the script executable
+    Command::new("chmod")
+        .args(["+x", script_path])
         .status()?;
     
-    if status.success() {
-        logger.success("🎉 LDA has been successfully updated!");
-        logger.info("You may need to restart your terminal or run 'hash -r' to use the updated version.");
-    } else {
-        return Err(anyhow::anyhow!("Update failed. Please try updating manually."));
-    }
+    logger.info("Update script created. The update will continue after this process exits.");
+    logger.info("Note: You may be prompted for your password to install the updated binary.");
     
-    Ok(())
+    // Execute the update script in the background and exit
+    Command::new("nohup")
+        .args(["bash", script_path])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()?;
+    
+    logger.info("Update process started. Exiting current instance...");
+    std::process::exit(0);
 }
 
 #[tokio::main]
