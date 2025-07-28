@@ -540,6 +540,20 @@ impl SelfUpdater {
     /// Restore from backup using sudo when elevated permissions are required
     #[cfg(unix)]
     fn restore_from_backup_with_sudo(&self, backup_path: &Path, target_path: &Path) -> Result<()> {
+        // First, remove the existing binary to avoid "Text file busy" error
+        // This is consistent with the update process
+        let rm_status = Command::new("sudo")
+            .args(&[
+                "rm",
+                "-f",  // Force removal, don't fail if file doesn't exist
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !rm_status.success() {
+            return Err(anyhow!("Failed to remove existing binary with sudo: exit code {}", rm_status));
+        }
+
         // Use sudo to copy the backup file
         let status = Command::new("sudo")
             .args(&[
@@ -674,7 +688,21 @@ impl SelfUpdater {
     /// Replace binary using sudo when elevated permissions are required
     #[cfg(unix)]
     fn replace_binary_with_sudo(&self, new_binary: &Path, target_path: &Path) -> Result<()> {
-        // Use sudo to copy the file
+        // First, remove the existing binary to avoid "Text file busy" error
+        // This is safer than trying to overwrite a potentially running binary
+        let rm_status = Command::new("sudo")
+            .args(&[
+                "rm",
+                "-f",  // Force removal, don't fail if file doesn't exist
+                target_path.to_str().ok_or_else(|| anyhow!("Invalid target path"))?
+            ])
+            .status()?;
+
+        if !rm_status.success() {
+            return Err(anyhow!("Failed to remove existing binary with sudo: exit code {}", rm_status));
+        }
+
+        // Now copy the new binary
         let status = Command::new("sudo")
             .args(&[
                 "cp",
