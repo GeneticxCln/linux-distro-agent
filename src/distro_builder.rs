@@ -4,6 +4,132 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tokio::process::Command as AsyncCommand;
+use std::time::Instant;
+use chrono::{DateTime, Utc};
+
+// Enhanced logging and progress tracking
+#[derive(Debug, Clone)]
+pub struct BuildProgress {
+    pub current_step: String,
+    pub total_steps: usize,
+    pub current_step_number: usize,
+    pub start_time: Instant,
+    pub step_start_time: Instant,
+    pub build_id: String,
+}
+
+impl BuildProgress {
+    pub fn new(total_steps: usize, build_id: String) -> Self {
+        let now = Instant::now();
+        Self {
+            current_step: "Initializing".to_string(),
+            total_steps,
+            current_step_number: 0,
+            start_time: now,
+            step_start_time: now,
+            build_id,
+        }
+    }
+    
+    pub fn start_step(&mut self, step_name: &str, step_number: usize) {
+        self.current_step = step_name.to_string();
+        self.current_step_number = step_number;
+        self.step_start_time = Instant::now();
+        
+        let elapsed = self.start_time.elapsed();
+        let progress_percent = (step_number as f64 / self.total_steps as f64) * 100.0;
+        
+        println!("\n🔄 [{}/{}] ({:.1}%) {} | Elapsed: {:.1}s", 
+                step_number, self.total_steps, progress_percent, 
+                step_name, elapsed.as_secs_f64());
+    }
+    
+    pub fn complete_step(&self, success: bool) {
+        let step_duration = self.step_start_time.elapsed();
+        let status_icon = if success { "✅" } else { "❌" };
+        
+        println!("{} {} completed in {:.1}s", 
+                status_icon, self.current_step, step_duration.as_secs_f64());
+    }
+    
+    pub fn log_substep(&self, message: &str) {
+        println!("   ↳ {}", message);
+    }
+    
+    pub fn log_warning(&self, message: &str) {
+        println!("   ⚠️  WARNING: {}", message);
+    }
+    
+    pub fn log_error(&self, message: &str) {
+        println!("   ❌ ERROR: {}", message);
+    }
+    
+    pub fn get_build_summary(&self) -> String {
+        let total_duration = self.start_time.elapsed();
+        format!("Build ID: {} | Total time: {:.1}s ({:.1}m)", 
+               self.build_id, total_duration.as_secs_f64(), total_duration.as_secs_f64() / 60.0)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BuildError {
+    pub step: String,
+    pub error_type: String,
+    pub message: String,
+    pub timestamp: DateTime<Utc>,
+    pub command: Option<String>,
+    pub stdout: Option<String>,
+    pub stderr: Option<String>,
+    pub build_id: String,
+}
+
+impl BuildError {
+    pub fn new(
+        step: &str, 
+        error_type: &str, 
+        message: &str, 
+        build_id: &str,
+        command: Option<String>,
+        stdout: Option<String>,
+        stderr: Option<String>
+    ) -> Self {
+        Self {
+            step: step.to_string(),
+            error_type: error_type.to_string(),
+            message: message.to_string(),
+            timestamp: Utc::now(),
+            command,
+            stdout,
+            stderr,
+            build_id: build_id.to_string(),
+        }
+    }
+    
+    pub fn log_detailed_error(&self) {
+        println!("\n🚨 BUILD ERROR DETAILS:");
+        println!("   Build ID: {}", self.build_id);
+        println!("   Step: {}", self.step);
+        println!("   Type: {}", self.error_type);
+        println!("   Time: {}", self.timestamp.format("%Y-%m-%d %H:%M:%S UTC"));
+        println!("   Message: {}", self.message);
+        
+        if let Some(cmd) = &self.command {
+            println!("   Failed Command: {}", cmd);
+        }
+        
+        if let Some(stdout) = &self.stdout {
+            if !stdout.trim().is_empty() {
+                println!("   stdout: {}", stdout.trim());
+            }
+        }
+        
+        if let Some(stderr) = &self.stderr {
+            if !stderr.trim().is_empty() {
+                println!("   stderr: {}", stderr.trim());
+            }
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistroConfig {
@@ -142,33 +268,202 @@ impl DistroBuilder {
     }
 
     pub async fn build(&self) -> Result<PathBuf> {
-        println!("🚀 Starting Linux distribution build: {}", self.config.name);
+        // Generate unique build ID
+        let build_id = format!("{}-{}", 
+                              self.config.name, 
+                              chrono::Utc::now().format("%Y%m%d_%H%M%S"));
         
-        // Create working directories
-        self.setup_directories().await?;
+        let mut progress = BuildProgress::new(8, build_id.clone());
         
-        // Build root filesystem
-        self.build_rootfs().await?;
+        println!("🚀 Starting Linux distribution build: {} (ID: {})", 
+                self.config.name, build_id);
+        println!("📊 Configuration: {} v{} ({})", 
+                self.config.name, self.config.version, self.config.architecture);
+        println!("🏗️  Base System: {:?} | Desktop: {:?}", 
+                self.config.base_system, self.config.packages.desktop_environment);
+        println!("💾 Filesystem: {:?} with {:?} compression", 
+                self.config.filesystem.root_fs, self.config.filesystem.compression);
         
-        // Install kernel
-        self.install_kernel().await?;
+        let build_start = std::time::Instant::now();
+        let mut errors = Vec::new();
         
-        // Install packages
-        self.install_packages().await?;
+        // Step 1: Setup directories
+        progress.start_step("Setting up build directories", 1);
+        match self.setup_directories().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Created work directories successfully");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "setup_directories", "filesystem", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
         
-        // Configure system
-        self.configure_system().await?;
+        // Step 2: Build root filesystem
+        progress.start_step("Building root filesystem", 2);
+        match self.build_rootfs().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Root filesystem created successfully");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "build_rootfs", "bootstrap", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
         
-        // Apply branding
-        self.apply_branding().await?;
+        // Step 3: Install kernel
+        progress.start_step("Installing kernel", 3);
+        match self.install_kernel().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Kernel installation completed");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "install_kernel", "package_installation", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
         
-        // Configure bootloader
-        self.configure_bootloader().await?;
+        // Step 4: Install packages
+        progress.start_step("Installing packages", 4);
+        match self.install_packages().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Package installation completed");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "install_packages", "package_installation", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
         
-        // Create ISO
-        let iso_path = self.create_iso().await?;
+        // Step 5: Configure system
+        progress.start_step("Configuring system", 5);
+        match self.configure_system().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("System configuration completed");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "configure_system", "configuration", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
         
-        println!("✅ Successfully built Linux distribution: {}", iso_path.display());
+        // Step 6: Apply branding
+        progress.start_step("Applying branding", 6);
+        match self.apply_branding().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Branding applied successfully");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "apply_branding", "branding", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
+        
+        // Step 7: Configure bootloader
+        progress.start_step("Configuring bootloader", 7);
+        match self.configure_bootloader().await {
+            Ok(_) => {
+                progress.complete_step(true);
+                progress.log_substep("Bootloader configuration completed");
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "configure_bootloader", "bootloader", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        }
+        
+        // Step 8: Create ISO
+        progress.start_step("Creating ISO image", 8);
+        let iso_path = match self.create_iso().await {
+            Ok(path) => {
+                progress.complete_step(true);
+                progress.log_substep(&format!("ISO created: {}", path.display()));
+                path
+            }
+            Err(e) => {
+                let error = BuildError::new(
+                    "create_iso", "iso_creation", &e.to_string(), &build_id,
+                    None, None, None
+                );
+                error.log_detailed_error();
+                errors.push(error);
+                progress.complete_step(false);
+                return Err(e);
+            }
+        };
+        
+        // Final summary
+        let _total_duration = build_start.elapsed();
+        println!("\n🎉 BUILD COMPLETED SUCCESSFULLY!");
+        println!("📊 {}", progress.get_build_summary());
+        println!("💿 ISO Path: {}", iso_path.display());
+        
+        // Check ISO file size
+        if let Ok(metadata) = std::fs::metadata(&iso_path) {
+            let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
+            println!("📏 ISO Size: {:.1} MB", size_mb);
+            
+            if let Some(limit) = self.config.filesystem.size_limit {
+                if size_mb > limit as f64 {
+                    progress.log_warning(&format!(
+                        "ISO size ({:.1} MB) exceeds configured limit ({} MB)", 
+                        size_mb, limit
+                    ));
+                }
+            }
+        }
+        
+        println!("🔗 You can now test the ISO with: qemu-system-x86_64 -m 2G -cdrom {}", 
+                iso_path.display());
+        
         Ok(iso_path)
     }
 
