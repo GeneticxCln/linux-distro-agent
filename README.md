@@ -45,7 +45,7 @@ It detects your distro and gives you the right commands, every time.
 - **Cache System**: Efficient caching for improved performance
 - **Shell Completions**: Support for bash, zsh, fish, and PowerShell
 
-### 🆕 **New in v0.3.0** ⭐
+### 🆕 **New in v4.6.0** ⭐
 - **🔒 Security Auditing**: Comprehensive security analysis and system hardening recommendations
 - **🔌 Plugin System**: Extensible plugin architecture for custom functionality
 - **📊 System Monitoring**: Real-time system metrics, health checks, and performance monitoring
@@ -55,6 +55,7 @@ It detects your distro and gives you the right commands, every time.
 - **📜 Enhanced Logging**: Comprehensive system activity logging and audit trails
 - **🎯 Self-Update**: Built-in self-update mechanism to stay current with latest features
 - **🤖 AI Agent System**: Intelligent task planning, execution safety, adaptive learning, and smart automation with comprehensive dry-run capabilities
+- **🔧 Fixed Self-Update "Text file busy" Issue**: Resolved critical issue where self-updates would fail with "Text file busy" errors
 
 - **🔍 Distribution Detection**: Automatically detects your Linux distribution from `/etc/os-release`
 - **📦 Package Manager Support**: Supports major package managers including:
