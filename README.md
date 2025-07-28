@@ -8,7 +8,7 @@
 - **Unification of Package Management**: Providing a seamless interface for package management across all major Linux distributions.
 - **Custom Distribution Building**: Simplifying the process of creating custom Linux distributions with enhanced tools and capabilities.
 - **Extensibility and Integration**: Encouraging the expansion of features through community contributions and external integrations.
-[![Version](https://img.shields.io/badge/version-0.2.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
 [![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
 
@@ -78,6 +78,16 @@ Linux Distribution Agent is a powerful, cross-platform command-line utility that
 - **Configuration Management**: Manage tool settings and preferences
 - **Cache System**: Efficient caching for improved performance
 - **Shell Completions**: Support for bash, zsh, fish, and PowerShell
+
+### 🆕 **New in v0.3.0** ⭐
+- **🔒 Security Auditing**: Comprehensive security analysis and system hardening recommendations
+- **🔌 Plugin System**: Extensible plugin architecture for custom functionality
+- **📊 System Monitoring**: Real-time system metrics, health checks, and performance monitoring
+- **🌐 Remote Control**: Manage remote Linux systems and execute commands remotely
+- **🪟 Window System Manager (WSM)**: Manage display managers, window systems, and desktop environments
+- **⚙️ System Configuration**: Advanced system configuration management and automation
+- **📜 Enhanced Logging**: Comprehensive system activity logging and audit trails
+- **🎯 Self-Update**: Built-in self-update mechanism to stay current with latest features
 
 - **🔍 Distribution Detection**: Automatically detects your Linux distribution from `/etc/os-release`
 - **📦 Package Manager Support**: Supports major package managers including:
@@ -461,6 +471,161 @@ linux-distro-agent completions <SHELL>
 ```
 
 **Supported shells:** `bash`, `zsh`, `fish`, `powershell`, `elvish`
+
+### 🆕 New Commands in v0.3.0
+
+#### `monitor`
+System monitoring and health checks.
+
+```bash
+linux-distro-agent monitor [--metrics] [--health] [--history]
+```
+
+**Options:**
+- `-m, --metrics`: Show current system metrics (CPU, memory, disk)
+- `--health`: Run comprehensive health checks
+- `--history`: Show metrics history and trends
+
+**Example:**
+```bash
+$ linux-distro-agent monitor --metrics
+System Metrics:
+• CPU Usage: 45.2%
+• Memory: 8.1GB / 16GB (50.6%)
+• Disk: 120GB / 500GB (24%)
+• Load Average: 1.2, 1.5, 1.8
+```
+
+#### `remote`
+Remote host management and command execution.
+
+```bash
+linux-distro-agent remote --host <HOST> --command <COMMAND> [--sudo] [--test]
+```
+
+**Options:**
+- `-h, --host <HOST>`: Remote host name or IP address
+- `-c, --command <COMMAND>`: Command to execute remotely
+- `--sudo`: Run command with sudo privileges
+- `--test`: Test connectivity only
+
+**Example:**
+```bash
+$ linux-distro-agent remote --host server01 --command "uptime" 
+[server01] up 15 days, 3:42, 2 users, load average: 0.25, 0.15, 0.10
+```
+
+#### `wsm`
+Window System Manager - manage display systems and desktop environments.
+
+```bash
+linux-distro-agent wsm [--detect] [--sessions] [--displays] [--restart <COMPONENT>] [--switch <TYPE>]
+```
+
+**Options:**
+- `-d, --detect`: Detect current window system information
+- `--sessions`: Show available desktop sessions
+- `--displays`: Show display configuration
+- `--restart <COMPONENT>`: Restart component (gdm, sddm, lightdm, x11)
+- `--switch <TYPE>`: Switch session type (x11, wayland)
+
+**Example:**
+```bash
+$ linux-distro-agent wsm --detect
+Window System: X11
+Display Manager: GDM
+Desktop Environment: GNOME
+Resolution: 1920x1080 @ 60Hz
+```
+
+#### `security`
+Security auditing and system hardening.
+
+```bash
+linux-distro-agent security [--audit] [--json] [--severity <LEVEL>] [--category <CATEGORY>]
+```
+
+**Options:**
+- `--audit`: Run full security audit
+- `--json`: Output results in JSON format
+- `--severity <LEVEL>`: Filter by severity (low, medium, high, critical)
+- `--category <CATEGORY>`: Filter by category (network, filesystem, users, etc.)
+
+**Example:**
+```bash
+$ linux-distro-agent security --audit --severity high
+Security Audit Results:
+⚠️  HIGH: SSH root login enabled
+⚠️  HIGH: Firewall not configured
+✅ PASS: Strong password policy enabled
+```
+
+#### `plugin`
+Plugin management system.
+
+```bash
+linux-distro-agent plugin [--list] [--info <NAME>] [--enable <NAME>] [--disable <NAME>] [--exec <NAME>] [--install <PATH>]
+```
+
+**Options:**
+- `-l, --list`: List all available plugins
+- `--info <NAME>`: Show plugin information
+- `--enable <NAME>`: Enable a plugin
+- `--disable <NAME>`: Disable a plugin
+- `--exec <NAME>`: Execute a plugin
+- `--install <PATH>`: Install plugin from directory
+- `--create <NAME>`: Create new plugin template
+
+**Example:**
+```bash
+$ linux-distro-agent plugin --list
+Available Plugins:
+• backup-manager (enabled) - Automated system backups
+• network-monitor (disabled) - Network traffic monitoring
+• custom-commands (enabled) - User-defined command shortcuts
+```
+
+#### `system-config`
+System configuration management.
+
+```bash
+linux-distro-agent system-config [--show] [--sample]
+```
+
+**Options:**
+- `-s, --show`: Show current system configuration
+- `--sample`: Generate sample configuration template
+
+**Example:**
+```bash
+$ linux-distro-agent system-config --show
+System Configuration:
+• Hostname: workstation-01
+• Timezone: America/New_York
+• Locale: en_US.UTF-8
+• Kernel: 6.1.0-lts
+```
+
+#### `self-update`
+Update LDA to the latest version.
+
+```bash
+linux-distro-agent self-update [--force] [--dry-run]
+```
+
+**Options:**
+- `-f, --force`: Force update even if already on latest version
+- `--dry-run`: Show what would be updated without updating
+
+**Example:**
+```bash
+$ linux-distro-agent self-update
+Current LDA version: 0.3.0
+Checking for updates...
+Latest LDA version: 0.3.1
+Downloading and installing the latest version...
+🎉 LDA has been successfully updated!
+```
 
 ## 🛡️ Security
 
