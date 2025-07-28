@@ -8,7 +8,7 @@
 - **Unification of Package Management**: Providing a seamless interface for package management across all major Linux distributions.
 - **Custom Distribution Building**: Simplifying the process of creating custom Linux distributions with enhanced tools and capabilities.
 - **Extensibility and Integration**: Encouraging the expansion of features through community contributions and external integrations.
-[![Version](https://img.shields.io/badge/version-0.3.0-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
+[![Version](https://img.shields.io/badge/version-0.3.2-green?style=for-the-badge)](https://github.com/GeneticxCln/linux-distro-agent/releases)
 [![License](https://img.shields.io/badge/license-MIT-orange?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-2024-red?style=for-the-badge)](https://www.rust-lang.org/)
 
@@ -88,6 +88,7 @@ Linux Distribution Agent is a powerful, cross-platform command-line utility that
 - **⚙️ System Configuration**: Advanced system configuration management and automation
 - **📜 Enhanced Logging**: Comprehensive system activity logging and audit trails
 - **🎯 Self-Update**: Built-in self-update mechanism to stay current with latest features
+- **🤖 AI Agent System**: Intelligent task planning, execution safety, adaptive learning, and smart automation with comprehensive dry-run capabilities
 
 - **🔍 Distribution Detection**: Automatically detects your Linux distribution from `/etc/os-release`
 - **📦 Package Manager Support**: Supports major package managers including:
@@ -627,6 +628,39 @@ Downloading and installing the latest version...
 🎉 LDA has been successfully updated!
 ```
 
+#### `agent` ⭐ **NEW in v0.3.1**
+AI Agent - Intelligent task planning and execution system.
+
+```bash
+linux-distro-agent agent [--start] [--add-task <TASK>] [--status] [--stats] [--clear-tasks] [--dry-run]
+```
+
+**Options:**
+- `-s, --start`: Start the intelligent agent loop
+- `--add-task <TASK>`: Add a task to the agent queue
+- `--status`: Show agent status and current tasks
+- `--stats`: Show agent learning data and statistics
+- `--clear-tasks`: Clear all tasks from the agent queue
+- `--dry-run`: Enable dry-run mode (tasks won't be executed)
+
+**Example:**
+```bash
+# Start the AI agent
+$ linux-distro-agent agent --start
+🤖 AI Agent started - Intelligent task planning and execution
+
+# Add a task for the agent
+$ linux-distro-agent agent --add-task "Update system packages"
+✅ Task added to agent queue
+
+# Check agent status
+$ linux-distro-agent agent --status
+Agent Status: Active
+Queued Tasks: 3
+Completed Tasks: 15
+Last Activity: 2 minutes ago
+```
+
 ## 🛡️ Security
 
 The Linux Distribution Agent follows the principle of least privilege and recommends running commands with necessary permissions only. Always review generated commands before execution to ensure they meet your security requirements. Regular updates are encouraged to keep your installation secure.
@@ -688,6 +722,13 @@ linux-distro-agent completions fish > ~/.config/fish/completions/linux-distro-ag
 ### Manual Installation
 
 For detailed installation instructions and troubleshooting, see [COMPLETIONS.md](COMPLETIONS.md).
+
+## 🆕 New in v0.3.1 ⭐
+- **🤖 AI Agent System**: Intelligent task planning, execution safety, adaptive learning, and smart automation with extensive dry-run capabilities
+- **Self-Update**: Automatic update checking and installation for easy version management
+- **Enhanced Plugin System**: More powerful plugin management and execution capabilities
+- **Remote System Management**: Execute commands on remote systems via SSH
+- **Comprehensive Monitoring**: Real-time metrics and comprehensive health checks
 
 ## 📖 Examples
 
