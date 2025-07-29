@@ -55,6 +55,7 @@ impl CompatibilityLayer {
     }
 
     /// Get canonical name from distro-specific package name
+    #[allow(dead_code)]
     pub fn get_canonical_name(&self, distro: &str, package_name: &str) -> Option<String> {
         let key = format!("{}:{}", distro, package_name);
         self.reverse_mappings.get(&key).cloned()
