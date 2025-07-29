@@ -129,45 +129,7 @@ impl SystemConfig {
         Ok(Self::default())
     }
 
-    pub fn save(&self) -> Result<()> {
-        let config_dir = "/etc/linux-distro-agent";
-        let config_path = format!("{}/config.toml", config_dir);
 
-        // Create config directory if it doesn't exist
-        if !Path::new(config_dir).exists() {
-            fs::create_dir_all(config_dir)?;
-        }
-
-        let toml_content = toml::to_string_pretty(self)?;
-        fs::write(&config_path, toml_content)?;
-
-        Ok(())
-    }
-
-    pub fn is_user_allowed(&self, username: &str) -> bool {
-        self.agent.allowed_users.contains(&username.to_string()) ||
-        self.is_user_in_allowed_groups(username)
-    }
-
-    fn is_user_in_allowed_groups(&self, username: &str) -> bool {
-        // Check if user is in any allowed groups
-        for group in &self.agent.allowed_groups {
-            if let Ok(output) = std::process::Command::new("groups")
-                .arg(username)
-                .output()
-            {
-                let groups_output = String::from_utf8_lossy(&output.stdout);
-                if groups_output.contains(group) {
-                    return true;
-                }
-            }
-        }
-        false
-    }
-
-    pub fn is_package_manager_allowed(&self, pm: &str) -> bool {
-        self.security.allowed_package_managers.contains(&pm.to_string())
-    }
 
     pub fn generate_sample_config() -> String {
         let config = Self::default();

@@ -63,7 +63,6 @@ pub struct RepositorySigningConfig {
 
 pub struct SigningVerificationManager {
     config_path: PathBuf,
-    keyring_path: PathBuf,
     trusted_keys: HashMap<String, TrustedKey>,
     signing_policy: SigningPolicy,
 }
@@ -89,13 +88,11 @@ impl Default for SigningPolicy {
 impl SigningVerificationManager {
     pub fn new(config_dir: &Path) -> Result<Self> {
         let config_path = config_dir.join("signing_config.json");
-        let keyring_path = config_dir.join("keyrings");
         
-        fs::create_dir_all(&keyring_path)?;
+        fs::create_dir_all(config_dir)?;
         
         let mut manager = Self {
             config_path,
-            keyring_path,
             trusted_keys: HashMap::new(),
             signing_policy: SigningPolicy::default(),
         };

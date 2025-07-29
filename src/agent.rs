@@ -86,7 +86,6 @@ pub struct IntelligentAgent {
 pub struct SafetyEnforcer {
     dangerous_patterns: Vec<String>,
     system_critical_paths: Vec<String>,
-    backup_enabled: bool,
 }
 
 /// Task Planning System
@@ -98,8 +97,6 @@ pub struct TaskPlanner {
 /// Execution Engine
 pub struct ExecutionEngine {
     dry_run_mode: bool,
-    confirmation_required: bool,
-    rollback_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -109,9 +106,7 @@ pub enum OptimizationStrategy {
     Adaptive,      // Learn optimal execution patterns
 }
 
-pub struct DependencyResolver {
-    dependency_graph: HashMap<String, Vec<String>>,
-}
+pub struct DependencyResolver {}
 
 impl IntelligentAgent {
     pub fn new(verbose: bool, quiet: bool) -> Self {
@@ -572,7 +567,6 @@ impl SafetyEnforcer {
                 "/usr".to_string(),
                 "/var".to_string(),
             ],
-            backup_enabled: true,
         }
     }
 
@@ -613,7 +607,6 @@ impl SafetyEnforcer {
         Ok(SafetyCheck {
             safe_to_execute,
             reason,
-            backup_recommended: task.safety_level != SafetyLevel::Safe,
         })
     }
 
@@ -633,7 +626,6 @@ impl SafetyEnforcer {
 pub struct SafetyCheck {
     pub safe_to_execute: bool,
     pub reason: String,
-    pub backup_recommended: bool,
 }
 
 impl TaskPlanner {
@@ -673,9 +665,7 @@ impl TaskPlanner {
 
 impl DependencyResolver {
     pub fn new() -> Self {
-        Self {
-            dependency_graph: HashMap::new(),
-        }
+        Self {}
     }
 
     pub fn dependencies_satisfied(&self, task: &Task, completed_tasks: &[Task]) -> bool {
@@ -690,8 +680,6 @@ impl ExecutionEngine {
     pub fn new() -> Self {
         Self {
             dry_run_mode: false,
-            confirmation_required: true,
-            rollback_enabled: true,
         }
     }
 
@@ -744,4 +732,3 @@ impl SafetyLevel {
 }
 
 // Add UUID dependency to Cargo.toml
-use uuid::Uuid;

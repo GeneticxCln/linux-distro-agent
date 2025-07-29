@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions};
-use std::io::{self, Write};
+use std::io;
 use std::path::Path;
 use chrono::{DateTime, Utc};
 
@@ -21,11 +21,8 @@ pub struct LogEntry {
 
 #[derive(Debug, serde::Serialize)]
 pub enum LogLevel {
-    Info,
-    Warning,
-    Error,
-    Success,
-    Security,
+    #[allow(dead_code)]
+    Debug,
 }
 
 impl SystemLogger {
@@ -77,88 +74,6 @@ impl SystemLogger {
             .open(format!("{}/agent.log", log_dir))
     }
 
-    pub fn log_command(&mut self, command: &str, success: bool, details: Option<String>, error: Option<String>) {
-        if !self.enabled {
-            return;
-        }
-
-        let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-        let level = if success { LogLevel::Success } else { LogLevel::Error };
-
-        let entry = LogEntry {
-            timestamp: Utc::now(),
-            level,
-            command: command.to_string(),
-            user,
-            success,
-            details,
-            error,
-        };
-
-        self.write_log_entry(&entry);
-    }
-
-    pub fn log_security_event(&mut self, event: &str, details: Option<String>) {
-        if !self.enabled {
-            return;
-        }
-
-        let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-
-        let entry = LogEntry {
-            timestamp: Utc::now(),
-            level: LogLevel::Security,
-            command: event.to_string(),
-            user,
-            success: true,
-            details,
-            error: None,
-        };
-
-        self.write_log_entry(&entry);
-    }
-
-    pub fn log_info(&mut self, message: &str, details: Option<String>) {
-        if !self.enabled {
-            return;
-        }
-
-        let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
-
-        let entry = LogEntry {
-            timestamp: Utc::now(),
-            level: LogLevel::Info,
-            command: message.to_string(),
-            user,
-            success: true,
-            details,
-            error: None,
-        };
-
-        self.write_log_entry(&entry);
-    }
-
-    fn write_log_entry(&mut self, entry: &LogEntry) {
-        if let Some(ref mut file) = self.log_file {
-            if let Ok(json) = serde_json::to_string(entry) {
-                let _ = writeln!(file, "{}", json);
-                let _ = file.flush();
-            }
-        }
-    }
-
-    pub fn is_enabled(&self) -> bool {
-        self.enabled
-    }
-
-    pub fn get_log_path(&self) -> Option<String> {
-        if Path::new("/var/log/linux-distro-agent/agent.log").exists() {
-            Some("/var/log/linux-distro-agent/agent.log".to_string())
-        } else {
-            let home = std::env::var("HOME").ok()?;
-            Some(format!("{}/.local/share/linux-distro-agent/agent.log", home))
-        }
-    }
 }
 
 impl Default for SystemLogger {

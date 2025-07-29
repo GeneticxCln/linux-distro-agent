@@ -1,9 +1,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::process::Command;
 use crate::config_manager::Config;
-use crate::logger::Logger;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PackageSource {
@@ -25,17 +23,14 @@ pub struct PackageSourceInfo {
 
 pub struct PackageSourceManager {
     config: Config,
-    logger: Logger,
 }
 
 impl PackageSourceManager {
-    pub fn new(verbose: bool, quiet: bool) -> Result<Self> {
+    pub fn new(_verbose: bool, _quiet: bool) -> Result<Self> {
         let config = Config::load().unwrap_or_default();
-        let logger = Logger::new(verbose, quiet);
         
         Ok(Self {
             config,
-            logger,
         })
     }
 
