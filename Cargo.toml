@@ -1,6 +1,6 @@
 [package]
 name = "linux-distro-agent"
-version = "4.7.0"
+version = "4.8.0"
 edition = "2024"
 
 [dependencies]

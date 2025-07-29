@@ -404,6 +404,27 @@ enum Commands {
         #[clap(long, default_value = "medium")]
         trust_level: String,
     },
+    /// Compatibility layer - cross-distribution package management
+    Compat {
+        /// Translate package name to distribution-specific name
+        #[clap(long)]
+        translate: Option<String>,
+        /// Show packages by category
+        #[clap(long)]
+        category: Option<String>,
+        /// List all available categories
+        #[clap(long)]
+        list_categories: bool,
+        /// Find similar packages by search term
+        #[clap(long)]
+        search: Option<String>,
+        /// Show all canonical package names
+        #[clap(long)]
+        list_packages: bool,
+        /// Target distribution for translation
+        #[clap(long)]
+        target_distro: Option<String>,
+    },
 }
 
 fn print_completions<G: Generator>(generator: G, cmd: &mut clap::Command) {
@@ -1471,6 +1492,94 @@ match String::from_utf8(value.to_vec()) {
                 logger.info("Use --package <path> to verify a package signature");
                 logger.info("Use --details for detailed signature information");
                 logger.info("Use --repo to verify repository signatures");
+            }
+        }
+        Commands::Compat { translate, category, list_categories, search, list_packages, target_distro } => {
+            use compatibility_layer::CompatibilityLayer;
+            
+            let compat = CompatibilityLayer::new();
+            let target_distro = target_distro.as_deref().unwrap_or(distro.id.as_deref().unwrap_or("unknown"));
+            
+            if list_categories {
+                logger.info("Available Package Categories:");
+                let categories = compat.get_categories();
+                for category in categories {
+                    logger.output(format!("• {}", category));
+                }
+            } else if let Some(category_name) = category {
+                logger.info(format!("Packages in category '{}':", category_name));
+                let packages = compat.get_packages_by_category(&category_name);
+                if packages.is_empty() {
+                    logger.info("No packages found in this category");
+                } else {
+                    for pkg in packages {
+                        let distro_pkg = compat.get_package_for_distro(&pkg.canonical_name, target_distro)
+                            .unwrap_or_else(|| "N/A".to_string());
+                        logger.output(format!("  {} -> {} ({})", 
+                            pkg.canonical_name, 
+                            distro_pkg,
+                            pkg.description.as_deref().unwrap_or("No description")
+                        ));
+                    }
+                }
+            } else if let Some(search_term) = search {
+                logger.info(format!("Searching for packages matching '{}':", search_term));
+                let packages = compat.find_similar_packages(&search_term);
+                if packages.is_empty() {
+                    logger.info("No packages found matching the search term");
+                } else {
+                    for pkg in packages {
+                        let distro_pkg = compat.get_package_for_distro(&pkg.canonical_name, target_distro)
+                            .unwrap_or_else(|| "N/A".to_string());
+                        logger.output(format!("  {} -> {} ({})", 
+                            pkg.canonical_name, 
+                            distro_pkg,
+                            pkg.description.as_deref().unwrap_or("No description")
+                        ));
+                    }
+                }
+            } else if let Some(package_name) = translate {
+                logger.info(format!("Translating '{}' for {}:", package_name, target_distro));
+                match compat.get_package_for_distro(&package_name, target_distro) {
+                    Some(distro_pkg) => {
+                        logger.success(format!("Canonical: {} -> Distro-specific: {}", package_name, distro_pkg));
+                        
+                        // Show install command for this distro
+                        if let Some(install_cmd) = compat.get_install_command(&package_name, target_distro) {
+                            logger.info(format!("Install command: {}", install_cmd));
+                        } else {
+                            logger.warn("No install command available for this distribution");
+                        }
+                    }
+                    None => {
+                        logger.warn(format!("No translation found for '{}' on {}", package_name, target_distro));
+                        logger.info("💡 Try searching for similar packages with --search");
+                    }
+                }
+            } else if list_packages {
+                logger.info("All canonical package names:");
+                let mut packages: Vec<_> = compat.mappings.keys().collect();
+                packages.sort();
+                for pkg_name in packages {
+                    let mapping = &compat.mappings[pkg_name];
+                    logger.output(format!("• {} - {}", 
+                        pkg_name, 
+                        mapping.description.as_deref().unwrap_or("No description")
+                    ));
+                }
+            } else {
+                logger.info("🔄 Compatibility Layer - Cross-distribution package management");
+                logger.info("");
+                logger.info("Available commands:");
+                logger.info("  --translate <package>     Translate package name to current distribution");
+                logger.info("  --category <name>         Show packages in a category");
+                logger.info("  --list-categories         List all available categories");
+                logger.info("  --search <term>           Find similar packages");
+                logger.info("  --list-packages           Show all canonical package names");
+                logger.info("  --target-distro <distro>  Target distribution for translation");
+                logger.info("");
+                logger.info(format!("Current target distribution: {}", target_distro));
+                logger.info(format!("Total packages in database: {}", compat.mappings.len()));
             }
         }
     }
