@@ -629,7 +629,7 @@ async fn main() -> Result<()> {
                         // Save to default location
                         let default_path = format!("{}-config.toml", config.name.to_lowercase().replace(' ', "-"));
                         std::fs::write(&default_path, &toml_string)?;
-                        logger.success(format!("Configuration saved to: {}", default_path));
+                        logger.success(format!("Configuration saved to: {default_path}"));
                     }
                     
                     logger.info("\n💡 Next steps:");

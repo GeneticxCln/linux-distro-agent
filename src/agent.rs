@@ -263,7 +263,7 @@ impl IntelligentAgent {
 
     /// Learn from task execution to improve future decisions
     fn learn_from_execution(&mut self, task: &Task, result: &ExecutionResult) {
-        let task_key = format!("{}:{}", task.task_type.to_string(), task.safety_level.to_string());
+        let task_key = format!("{}:{}", task.task_type, task.safety_level);
         
         // Update success rate
         let current_rate = self.state.learning_data.get(&task_key).unwrap_or(&0.5);
@@ -276,7 +276,7 @@ impl IntelligentAgent {
         self.state.learning_data.insert(task_key, new_rate);
         
         // Learn execution time patterns
-        let duration_key = format!("{}_duration", task.task_type.to_string());
+        let duration_key = format!("{}_duration", task.task_type);
         let avg_duration = self.state.learning_data.get(&duration_key).unwrap_or(&30.0);
         let new_avg = (avg_duration + result.duration.as_secs() as f64) / 2.0;
         self.state.learning_data.insert(duration_key, new_avg);
@@ -706,28 +706,30 @@ impl ExecutionEngine {
     }
 }
 
-impl TaskType {
-    fn to_string(&self) -> String {
-        match self {
-            TaskType::PackageManagement => "package_management".to_string(),
-            TaskType::SystemConfiguration => "system_configuration".to_string(),
-            TaskType::SecurityAudit => "security_audit".to_string(),
-            TaskType::Monitoring => "monitoring".to_string(),
-            TaskType::RemoteExecution => "remote_execution".to_string(),
-            TaskType::DistroBuilding => "distro_building".to_string(),
-            TaskType::PluginExecution => "plugin_execution".to_string(),
-        }
+impl std::fmt::Display for TaskType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            TaskType::PackageManagement => "package_management",
+            TaskType::SystemConfiguration => "system_configuration",
+            TaskType::SecurityAudit => "security_audit",
+            TaskType::Monitoring => "monitoring",
+            TaskType::RemoteExecution => "remote_execution",
+            TaskType::DistroBuilding => "distro_building",
+            TaskType::PluginExecution => "plugin_execution",
+        };
+        write!(f, "{}", s)
     }
 }
 
-impl SafetyLevel {
-    fn to_string(&self) -> String {
-        match self {
-            SafetyLevel::Safe => "safe".to_string(),
-            SafetyLevel::Moderate => "moderate".to_string(),
-            SafetyLevel::Risky => "risky".to_string(),
-            SafetyLevel::Dangerous => "dangerous".to_string(),
-        }
+impl std::fmt::Display for SafetyLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            SafetyLevel::Safe => "safe",
+            SafetyLevel::Moderate => "moderate",
+            SafetyLevel::Risky => "risky",
+            SafetyLevel::Dangerous => "dangerous",
+        };
+        write!(f, "{}", s)
     }
 }
 
