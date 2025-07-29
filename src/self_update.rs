@@ -308,35 +308,60 @@ impl SelfUpdater {
 
         // Clone repository
         self.logger.info("📥 Cloning repository...");
-        let clone_status = Command::new("git")
+        let clone_output = Command::new("git")
             .args(&[
                 "clone",
                 "--depth", "1",
-                "--branch", &format!("v{}", update_info.latest_version),
                 "https://github.com/GeneticxCln/linux-distro-agent.git",
                 repo_path.to_str().unwrap(),
             ])
-            .status()?;
+            .output()?;
 
-        if !clone_status.success() {
-            return Err(anyhow!("Failed to clone repository"));
+        if !clone_output.status.success() {
+            let stderr = String::from_utf8_lossy(&clone_output.stderr);
+            return Err(anyhow!("Failed to clone repository: {}", stderr));
+        }
+
+        // Checkout the specific tag
+        self.logger.info(&format!("🏷️  Checking out tag v{}...", update_info.latest_version));
+        let checkout_output = Command::new("git")
+            .args(&[
+                "checkout",
+                &format!("v{}", update_info.latest_version),
+            ])
+            .current_dir(&repo_path)
+            .output()?;
+
+        if !checkout_output.status.success() {
+            // If tag doesn't exist, try to use the main branch
+            self.logger.warn(&format!("Tag v{} not found, using main branch", update_info.latest_version));
+            let checkout_main = Command::new("git")
+                .args(&["checkout", "main"])
+                .current_dir(&repo_path)
+                .output()?;
+            
+            if !checkout_main.status.success() {
+                let stderr = String::from_utf8_lossy(&checkout_output.stderr);
+                return Err(anyhow!("Failed to checkout version: {}", stderr));
+            }
         }
 
         // Build the project
         self.logger.info("🔨 Building optimized binary (this may take a few minutes)...");
-        let build_status = Command::new("cargo")
+        let build_output = Command::new("cargo")
             .args(&["build", "--release"])
             .current_dir(&repo_path)
-            .status()?;
+            .output()?;
 
-        if !build_status.success() {
-            return Err(anyhow!("Failed to build from source"));
+        if !build_output.status.success() {
+            let stderr = String::from_utf8_lossy(&build_output.stderr);
+            return Err(anyhow!("Failed to build from source: {}", stderr));
         }
 
         // Find the built binary
         let built_binary = repo_path.join("target/release").join(&self.platform.binary_name);
         if !built_binary.exists() {
-            return Err(anyhow!("Built binary not found"));
+            return Err(anyhow!("Built binary not found at: {}", built_binary.display()));
         }
 
         // Verify the binary
@@ -763,33 +788,3 @@ impl SelfUpdater {
     }
 }
 
-// Implement tempfile functionality if not available
-#[cfg(not(test))]
-mod tempfile {
-    use std::path::PathBuf;
-    use anyhow::Result;
-
-    pub struct TempDir {
-        path: PathBuf,
-    }
-
-    impl TempDir {
-        pub fn path(&self) -> &std::path::Path {
-            &self.path
-        }
-    }
-
-    impl Drop for TempDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.path);
-        }
-    }
-
-    pub fn tempdir() -> Result<TempDir> {
-        let mut path = std::env::temp_dir();
-        path.push(format!("lda_temp_{}", std::process::id()));
-        std::fs::create_dir_all(&path)?;
-        
-        Ok(TempDir { path })
-    }
-}
