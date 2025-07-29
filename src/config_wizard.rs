@@ -31,7 +31,7 @@ impl ConfigWizard {
 
         let description: String = Input::new()
             .with_prompt("Description")
-            .default(format!("Custom Linux distribution based on {}", name))
+            .default(format!("Custom Linux distribution based on {name}"))
             .interact_text()?;
 
         // Architecture selection
@@ -476,7 +476,7 @@ impl ConfigWizard {
         if let Some(user) = &config.user_config.default_user {
             println!("Default User: {}", user.username);
         }
-        println!("Output Path: {}", output_path);
+        println!("Output Path: {output_path}");
         println!();
 
         let confirm = Confirm::new()
