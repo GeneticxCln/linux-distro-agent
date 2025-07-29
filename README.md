@@ -1,10 +1,10 @@
-# 🐧 Linux Distribution Agent (LDA) v4.9.0
+# 🐧 Linux Distribution Agent (LDA) v5.0.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-4.9.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-5.0.0-blue.svg)]()
 [![Rust](https://img.shields.io/badge/rust-2024-red.svg)](https://www.rust-lang.org/)
 [![Production Ready](https://img.shields.io/badge/status-production%20ready-brightgreen.svg)]()
-[![Phase 3](https://img.shields.io/badge/phase-3%20complete-success.svg)]()
+[![Signing Verification](https://img.shields.io/badge/security-signing%20verification-green.svg)]()
 
 **One tool to rule them all - manage packages on any Linux distro with the same commands! 🚀**
 
@@ -67,7 +67,17 @@ It detects your distro and gives you the right commands, every time.
 
 [📋 View Complete Test Report](PHASE3_TEST_REPORT.md) • [🧪 Testing Documentation](TESTING_PHASE3.md)
 
-### 🆕 **New in v4.9.0** ⭐ **LATEST**
+### 🆕 **New in v5.0.0** ⭐ **LATEST**
+- **🔐 Signing Verification System**: Complete package and repository signature verification
+- **🛡️ Security Enhancements**: GPG, RPM, and DEB signature support with comprehensive validation
+- **🔑 Trust Management**: Advanced trusted key management with import/export capabilities
+- **📋 Policy Configuration**: Flexible signing policies with per-repository settings
+- **🔒 Batch Verification**: Efficient verification of multiple packages simultaneously
+- **⚙️ Repository Security**: Repository metadata verification and signing configuration
+- **🎯 Enhanced CLI**: New signing verification commands with comprehensive options
+- **🚨 Security Auditing**: Integration with security audit system for comprehensive protection
+
+### 🆕 **New in v4.9.0**
 - **🎯 Phase 3 Complete**: Comprehensive testing suite with 100% pass rate
 - **🚀 Production Ready**: All core functionality validated and ready for deployment
 - **📦 Enhanced Package Sources**: Working AUR integration with intelligent fallback
@@ -731,6 +741,70 @@ Agent Status: Active
 Queued Tasks: 3
 Completed Tasks: 15
 Last Activity: 2 minutes ago
+```
+
+#### `verify` ⭐ **NEW in v5.0.0**
+Package and repository signature verification system.
+
+```bash
+linux-distro-agent verify [OPTIONS]
+```
+
+**Options:**
+- `--add-key <KEY_ID>`: Add a trusted key to the keyring
+- `--remove-key <KEY_ID>`: Remove a key from trusted keyring
+- `--list-keys`: List all trusted keys
+- `--import-keys <FILE>`: Import keys from file
+- `--export-keys <FILE>`: Export trusted keys to file
+- `--verify-package <PACKAGE>`: Verify package signature
+- `--batch-verify <PATH>`: Batch verify packages in directory
+- `--verify-repo <REPO>`: Verify repository metadata
+- `--config-repo <REPO>`: Configure repository signing settings
+- `--update-policy`: Update global signing policy
+- `--show-policy`: Show current signing policy and configuration
+- `--require-signature`: Require signatures for package operations
+- `--no-signature`: Disable signature requirements
+- `--trusted-keys <KEYS>`: Specify trusted key IDs
+- `--key-server <SERVER>`: Set key server for key retrieval
+- `--default-trust <LEVEL>`: Set default trust level (none, partial, full)
+- `--signature-types <TYPES>`: Specify required signature types (gpg, rpm, deb)
+
+**Examples:**
+```bash
+# Show current signing policy
+$ linux-distro-agent verify --show-policy
+Global Signing Policy:
+  Require Signatures: true
+  Default Trust Level: Partial
+  Signature Types: [GPG, RPM]
+  
+Trusted Keys:
+  - 1234ABCD (John Doe <jdoe@example.com>)
+  - 5678EFGH (Repository Key <repo@distro.org>)
+
+# Add trusted key for verification
+$ linux-distro-agent verify --add-key 1234ABCD5678EFGH
+✅ Added key 1234ABCD5678EFGH to trusted keyring
+
+# Verify a package signature
+$ linux-distro-agent verify --verify-package firefox
+🔐 Verifying package: firefox
+✅ Package signature valid (GPG)
+✅ Signed by trusted key: 1234ABCD
+
+# Configure repository signing
+$ linux-distro-agent verify --config-repo archlinux --require-signature --trusted-keys "1234ABCD,5678EFGH"
+✅ Repository 'archlinux' signing configuration updated
+
+# Batch verify packages
+$ linux-distro-agent verify --batch-verify /var/cache/pacman/pkg/
+🔐 Batch verifying packages in /var/cache/pacman/pkg/
+✅ 45/50 packages verified successfully
+⚠️  5 packages failed verification (see details above)
+
+# Update global signing policy
+$ linux-distro-agent verify --update-policy --default-trust full --signature-types "gpg,rpm,deb"
+✅ Global signing policy updated
 ```
 
 ## 🛡️ Security
