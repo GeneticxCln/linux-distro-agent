@@ -448,6 +448,39 @@ enum Commands {
         /// Batch verify multiple packages
         #[clap(long)]
         batch_verify: Vec<PathBuf>,
+        /// Configure repository signing settings
+        #[clap(long)]
+        config_repo: Option<String>,
+        /// Require signatures for repository (used with --config-repo)
+        #[clap(long)]
+        require_signature: bool,
+        /// Allow unsigned packages for repository (used with --config-repo)
+        #[clap(long)]
+        no_signature: bool,
+        /// Set trusted keys for repository (comma-separated, used with --config-repo)
+        #[clap(long)]
+        trusted_keys: Option<String>,
+        /// Set key server for repository (used with --config-repo)
+        #[clap(long)]
+        key_server: Option<String>,
+        /// Update global signing policy
+        #[clap(long)]
+        update_policy: bool,
+        /// Require signatures globally (used with --update-policy)
+        #[clap(long)]
+        require_all: bool,
+        /// Allow unsigned packages globally (used with --update-policy)
+        #[clap(long)]
+        allow_unsigned: bool,
+        /// Set default trust level (unknown/minimal/full, used with --update-policy)
+        #[clap(long)]
+        default_trust: Option<String>,
+        /// Set allowed signature types (comma-separated: gpg,rsa,ecdsa, used with --update-policy)
+        #[clap(long)]
+        signature_types: Option<String>,
+        /// Show current signing policy
+        #[clap(long)]
+        show_policy: bool,
     },
     /// Compatibility layer - cross-distribution package management
     Compat {
@@ -1614,7 +1647,9 @@ match String::from_utf8(value.to_vec()) {
         Commands::Verify { 
             package, key_id: _, details, repo, repo_name, metadata_path, trust_level: _, 
             add_key, key_owner, key_email, remove_key, list_keys, 
-            export_keys, import_keys, batch_verify 
+            export_keys, import_keys, batch_verify, config_repo, require_signature, 
+            no_signature, trusted_keys, key_server, update_policy, require_all,
+            allow_unsigned, default_trust, signature_types, show_policy
         } => {
             use signing_verification::SigningVerificationManager;
             
@@ -1727,6 +1762,79 @@ match String::from_utf8(value.to_vec()) {
                 return Ok(());
             }
             
+            // Handle repository signing configuration
+            if let Some(repo_name) = config_repo {
+                logger.info(format!("Configuring repository signing for: {}", repo_name));
+                
+                let repo_config = signing_verification::RepositorySigningConfig {
+                    required_keys: Vec::new(),
+                    keyring_path: None,
+                    signature_verification: !no_signature && (require_signature || !no_signature),
+                    trust_level_override: None,
+                    trusted_keys: trusted_keys.as_ref().map(|keys| 
+                        keys.split(',').map(|k| k.trim().to_string()).collect()
+                    ).unwrap_or_default(),
+                    key_server: key_server.clone(),
+                };
+                
+                match manager.configure_repository_signing(&repo_name, repo_config) {
+                    Ok(()) => logger.success(format!("Repository '{}' signing configuration updated", repo_name)),
+                    Err(e) => logger.error(format!("Failed to configure repository signing: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            // Handle signing policy updates
+            if update_policy {
+                logger.info("Updating global signing policy...");
+                
+                let mut policy = manager.get_signing_policy().clone();
+                
+                if require_all {
+                    policy.require_signature = true;
+                }
+                
+                if allow_unsigned {
+                    policy.require_signature = false;
+                }
+                
+                if let Some(trust_str) = default_trust.as_deref() {
+                    policy.default_trust_level = match trust_str {
+                        "unknown" => signing_verification::TrustLevel::Unknown,
+                        "minimal" => signing_verification::TrustLevel::Minimal,
+                        "full" => signing_verification::TrustLevel::Full,
+                        _ => signing_verification::TrustLevel::Minimal,
+                    };
+                }
+                
+                if let Some(types_str) = signature_types.as_ref() {
+                    policy.allowed_signature_types = types_str.split(',').map(|t| match t.trim() {
+                        "gpg" => signing_verification::SignatureType::GPG,
+                        "rsa" => signing_verification::SignatureType::RSA,
+                        "ecdsa" => signing_verification::SignatureType::ECDSA,
+                        _ => signing_verification::SignatureType::GPG,
+                    }).collect();
+                }
+                
+                match manager.update_signing_policy(policy) {
+                    Ok(()) => logger.success("Global signing policy updated successfully"),
+                    Err(e) => logger.error(format!("Failed to update signing policy: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            // Handle showing current signing policy
+            if show_policy {
+                match manager.show_policy() {
+                    Ok(policy_info) => {
+                        logger.info("📋 Current Signing Policy:");
+                        logger.output(policy_info);
+                    }
+                    Err(e) => logger.error(format!("Failed to retrieve signing policy: {}", e)),
+                }
+                return Ok(());
+            }
+            
             // Handle single package verification
             if let Some(package_path) = package {
                 match manager.get_signing_status(&package_path) {
@@ -1768,10 +1876,28 @@ match String::from_utf8(value.to_vec()) {
                 logger.info("Repository Operations:");
                 logger.info("  --repo --repo-name <name> --metadata-path <path>  Verify repository metadata");
                 logger.info("");
+                logger.info("Repository Signing Configuration:");
+                logger.info("  --config-repo <name>         Configure repository signing settings");
+                logger.info("  --require-signature          Require signatures for repository packages");
+                logger.info("  --no-signature               Allow unsigned packages for repository");
+                logger.info("  --trusted-keys <keys>        Set trusted keys (comma-separated)");
+                logger.info("  --key-server <url>           Set key server for repository");
+                logger.info("");
+                logger.info("Global Signing Policy:");
+                logger.info("  --update-policy              Update global signing policy");
+                logger.info("  --require-all                Require signatures globally");
+                logger.info("  --allow-unsigned             Allow unsigned packages globally");
+                logger.info("  --default-trust <level>      Set default trust (unknown/minimal/full)");
+                logger.info("  --signature-types <types>    Set allowed signature types (gpg,rsa,ecdsa)");
+                logger.info("  --show-policy                Show current signing policy");
+                logger.info("");
                 logger.info("💡 Examples:");
                 logger.info("  lda verify --package ./package.rpm --details");
                 logger.info("  lda verify --add-key ./key.gpg --key-owner 'John Doe' --key-email 'john@example.com'");
                 logger.info("  lda verify --batch-verify ./pkg1.deb ./pkg2.deb ./pkg3.deb");
+                logger.info("  lda verify --config-repo myrepo --require-signature --trusted-keys key1,key2");
+                logger.info("  lda verify --update-policy --require-all --default-trust full");
+                logger.info("  lda verify --show-policy");
             }
         }
         Commands::Compat { translate, category, list_categories, search, list_packages, target_distro } => {

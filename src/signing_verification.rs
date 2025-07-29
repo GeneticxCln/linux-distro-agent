@@ -27,6 +27,7 @@ pub enum SignatureType {
 pub enum TrustLevel {
     Unknown,
     Never,
+    Minimal,
     Marginal,
     Full,
     Ultimate,
@@ -48,6 +49,7 @@ pub struct SigningPolicy {
     pub require_signature: bool,
     pub allowed_signature_types: Vec<SignatureType>,
     pub minimum_trust_level: TrustLevel,
+    pub default_trust_level: TrustLevel,
     pub allow_expired_keys: bool,
     pub verify_chain: bool,
     pub repositories: HashMap<String, RepositorySigningConfig>,
@@ -59,6 +61,21 @@ pub struct RepositorySigningConfig {
     pub keyring_path: Option<PathBuf>,
     pub signature_verification: bool,
     pub trust_level_override: Option<TrustLevel>,
+    pub trusted_keys: Vec<String>,
+    pub key_server: Option<String>,
+}
+
+impl Default for RepositorySigningConfig {
+    fn default() -> Self {
+        Self {
+            required_keys: Vec::new(),
+            keyring_path: None,
+            signature_verification: true,
+            trust_level_override: None,
+            trusted_keys: Vec::new(),
+            key_server: None,
+        }
+    }
 }
 
 pub struct SigningVerificationManager {
@@ -78,6 +95,7 @@ impl Default for SigningPolicy {
                 SignatureType::Ed25519,
             ],
             minimum_trust_level: TrustLevel::Marginal,
+            default_trust_level: TrustLevel::Marginal,
             allow_expired_keys: false,
             verify_chain: true,
             repositories: HashMap::new(),
@@ -461,6 +479,49 @@ Err(anyhow::anyhow!("Key not found: {}", key_id))
         
         Ok(())
     }
+    
+    pub fn show_policy(&self) -> Result<String> {
+        let policy = &self.signing_policy;
+        let mut output = String::new();
+        
+        output.push_str("Global Signing Policy:\n");
+        output.push_str(&format!("  Require Signature: {}\n", policy.require_signature));
+        output.push_str(&format!("  Default Trust Level: {:?}\n", policy.default_trust_level));
+        output.push_str(&format!("  Minimum Trust Level: {:?}\n", policy.minimum_trust_level));
+        output.push_str(&format!("  Allow Expired Keys: {}\n", policy.allow_expired_keys));
+        output.push_str(&format!("  Verify Chain: {}\n", policy.verify_chain));
+        output.push_str(&format!("  Allowed Signature Types: {:?}\n", policy.allowed_signature_types));
+        output.push_str(&format!("  Repository Configurations: {}\n", policy.repositories.len()));
+        
+        if !policy.repositories.is_empty() {
+            output.push_str("\nRepository Configurations:\n");
+            for (repo_name, repo_config) in &policy.repositories {
+                output.push_str(&format!("  {}:\n", repo_name));
+                output.push_str(&format!("    Signature Verification: {}\n", repo_config.signature_verification));
+                output.push_str(&format!("    Trusted Keys: {:?}\n", repo_config.trusted_keys));
+                if let Some(key_server) = &repo_config.key_server {
+                    output.push_str(&format!("    Key Server: {}\n", key_server));
+                }
+                if let Some(trust_level) = &repo_config.trust_level_override {
+                    output.push_str(&format!("    Trust Level Override: {:?}\n", trust_level));
+                }
+            }
+        }
+        
+        output.push_str(&format!("\nTrusted Keys: {}\n", self.trusted_keys.len()));
+        if !self.trusted_keys.is_empty() {
+            for (key_id, key) in &self.trusted_keys {
+                output.push_str(&format!("  {} - {} <{}> (Trust: {:?})\n", 
+                    key_id, key.owner, key.email, key.trust_level));
+            }
+        }
+        
+        Ok(output)
+    }
+    
+    pub fn get_signing_policy(&self) -> &SigningPolicy {
+        &self.signing_policy
+    }
 }
 
 // Command-line interface functions
@@ -530,6 +591,101 @@ pub fn handle_signing_verification_command(args: &[String]) -> Result<()> {
                 println!("Usage: lda sign import <import_path>");
             }
         }
+        Some("config-repo") => {
+            if let Some(repo_name) = args.get(1) {
+                // Parse optional configuration parameters
+                let mut config = RepositorySigningConfig::default();
+                
+                // Check for --require-signature flag
+                if args.contains(&"--require-signature".to_string()) {
+                    config.signature_verification = true;
+                }
+                
+                // Check for --no-signature flag
+                if args.contains(&"--no-signature".to_string()) {
+                    config.signature_verification = false;
+                }
+                
+                // Check for --trusted-keys parameter
+                if let Some(pos) = args.iter().position(|x| x == "--trusted-keys") {
+                    if let Some(keys_str) = args.get(pos + 1) {
+                        config.trusted_keys = keys_str.split(',').map(|s| s.trim().to_string()).collect();
+                    }
+                }
+                
+                // Check for --key-server parameter
+                if let Some(pos) = args.iter().position(|x| x == "--key-server") {
+                    if let Some(server) = args.get(pos + 1) {
+                        config.key_server = Some(server.clone());
+                    }
+                }
+                
+                manager.configure_repository_signing(repo_name, config)?;
+            } else {
+                println!("Usage: lda sign config-repo <repo_name> [--require-signature|--no-signature] [--trusted-keys key1,key2] [--key-server server]");
+            }
+        }
+        Some("update-policy") => {
+            let mut policy = manager.signing_policy.clone();
+            
+            // Parse policy updates from arguments
+            if args.contains(&"--require-all".to_string()) {
+                policy.require_signature = true;
+            }
+            
+            if args.contains(&"--allow-unsigned".to_string()) {
+                policy.require_signature = false;
+            }
+            
+            if let Some(pos) = args.iter().position(|x| x == "--default-trust") {
+                if let Some(trust_str) = args.get(pos + 1) {
+                    policy.default_trust_level = match trust_str.as_str() {
+                        "unknown" => TrustLevel::Unknown,
+                        "minimal" => TrustLevel::Minimal,
+                        "full" => TrustLevel::Full,
+                        _ => {
+                            println!("Invalid trust level: {}. Use: unknown, minimal, full", trust_str);
+                            return Ok(());
+                        }
+                    };
+                }
+            }
+            
+            if let Some(pos) = args.iter().position(|x| x == "--signature-types") {
+                if let Some(types_str) = args.get(pos + 1) {
+                    policy.allowed_signature_types = types_str.split(',').map(|s| {
+                        match s.trim() {
+                            "gpg" => SignatureType::GPG,
+                            "rsa" => SignatureType::RSA,
+                            "ecdsa" => SignatureType::ECDSA,
+                            _ => SignatureType::GPG, // Default fallback
+                        }
+                    }).collect();
+                }
+            }
+            
+            manager.update_signing_policy(policy)?;
+        }
+        Some("show-policy") => {
+            let policy = &manager.signing_policy;
+            println!("Global Signing Policy:");
+            println!("  Require Signature: {}", policy.require_signature);
+            println!("  Default Trust Level: {:?}", policy.default_trust_level);
+            println!("  Allowed Signature Types: {:?}", policy.allowed_signature_types);
+            println!("  Repository Configurations: {}", policy.repositories.len());
+            
+            if !policy.repositories.is_empty() {
+                println!("\nRepository Configurations:");
+                for (repo_name, repo_config) in &policy.repositories {
+                    println!("  {}:", repo_name);
+                    println!("    Signature Verification: {}", repo_config.signature_verification);
+                    println!("    Trusted Keys: {:?}", repo_config.trusted_keys);
+                    if let Some(key_server) = &repo_config.key_server {
+                        println!("    Key Server: {}", key_server);
+                    }
+                }
+            }
+        }
         _ => {
             println!("Package Signing and Verification Commands:");
             println!("  lda sign verify <package_path>              - Verify package signature");
@@ -539,6 +695,21 @@ pub fn handle_signing_verification_command(args: &[String]) -> Result<()> {
             println!("  lda sign verify-repo <repo> <metadata>      - Verify repository metadata");
             println!("  lda sign export <path>                      - Export trusted keys");
             println!("  lda sign import <path>                      - Import trusted keys");
+            println!("  lda sign config-repo <repo> [options]       - Configure repository signing");
+            println!("  lda sign update-policy [options]            - Update global signing policy");
+            println!("  lda sign show-policy                        - Show current signing policy");
+            println!("");
+            println!("Repository Configuration Options:");
+            println!("  --require-signature                         - Require signatures for this repo");
+            println!("  --no-signature                              - Allow unsigned packages");
+            println!("  --trusted-keys key1,key2                   - Set trusted keys for repo");
+            println!("  --key-server <server>                       - Set key server for repo");
+            println!("");
+            println!("Policy Update Options:");
+            println!("  --require-all                               - Require signatures globally");
+            println!("  --allow-unsigned                            - Allow unsigned packages globally");
+            println!("  --default-trust <level>                     - Set default trust level (unknown/minimal/full)");
+            println!("  --signature-types gpg,rsa,ecdsa             - Set allowed signature types");
         }
     }
     
