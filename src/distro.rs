@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::fs;
 use anyhow::Result;
 use crate::compatibility_layer::CompatibilityLayer;
+use crate::config_manager::Config;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistroInfo {
@@ -88,12 +89,14 @@ impl DistroInfo {
     }
 
     pub fn get_package_install_command(&self, package: &str) -> Option<String> {
+        let config = Config::load().unwrap_or_default();
         let compatibility_layer = CompatibilityLayer::new();
         
         let final_package = compatibility_layer.get_package_for_distro(package, self.id.as_deref().unwrap_or(""))
             .unwrap_or_else(|| package.to_string());
 
-        match self.package_manager.as_deref() {
+        // Check native package manager
+        let native_cmd = match self.package_manager.as_deref() {
             Some("pacman") => Some(format!("sudo pacman -S {}", final_package)),
             Some("apt") => Some(format!("sudo apt install {}", final_package)),
             Some("dnf") => Some(format!("sudo dnf install {}", final_package)),
@@ -107,7 +110,45 @@ impl DistroInfo {
             Some("flatpak") => Some(format!("flatpak install {}", final_package)),
             Some("snap") => Some(format!("sudo snap install {}", final_package)),
             _ => None,
+        };
+
+        if native_cmd.is_some() {
+            return native_cmd;
         }
+
+        // Check AUR, Flatpak, Snap, and AppImage based on config
+        if config.enable_aur {
+            if let Some(cmd) = self.get_aur_install_command(package) {
+                return Some(cmd);
+            }
+        }
+
+        if config.enable_flatpak {
+            if let Some(cmd) = self.get_flatpak_install_command(package) {
+                return Some(cmd);
+            }
+        }
+
+        if config.enable_snap {
+            if let Some(cmd) = self.get_snap_install_command(package) {
+                return Some(cmd);
+            }
+        }
+
+        // Implement logic for AppImage lookup if needed
+        None
+    }
+
+    fn get_aur_install_command(&self, package: &str) -> Option<String> {
+        Some(format!("paru -S {}", package))
+    }
+
+    fn get_flatpak_install_command(&self, package: &str) -> Option<String> {
+        Some(format!("flatpak install {}", package))
+    }
+
+    fn get_snap_install_command(&self, package: &str) -> Option<String> {
+        Some(format!("sudo snap install {}", package))
     }
 
     pub fn get_package_search_command(&self, query: &str) -> Option<String> {

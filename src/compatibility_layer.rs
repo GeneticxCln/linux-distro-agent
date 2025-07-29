@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
+use std::process::Command;
+use crate::config_manager::Config;
 
 /// Maps package names across different distributions
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,13 +66,14 @@ impl CompatibilityLayer {
     pub fn get_install_command(&self, canonical_name: &str, distro: &str) -> Option<String> {
         if let Some(package_name) = self.get_package_for_distro(canonical_name, distro) {
             match distro {
-                "arch" | "pacman" => Some(format!("sudo pacman -S --noconfirm {}", package_name)),
-                "debian" | "ubuntu" | "apt" => Some(format!("sudo apt update && sudo apt install -y {}", package_name)),
-                "fedora" | "rhel" | "centos" | "dnf" => Some(format!("sudo dnf install -y {}", package_name)),
-                "opensuse" | "zypper" => Some(format!("sudo zypper install -y {}", package_name)),
+                "arch" | "cachyos" | "endeavouros" | "manjaro" | "pacman" => Some(format!("sudo pacman -S --noconfirm {}", package_name)),
+                "debian" | "ubuntu" | "pop" | "elementary" | "apt" => Some(format!("sudo apt update && sudo apt install -y {}", package_name)),
+                "fedora" | "rhel" | "centos" | "rocky" | "almalinux" | "dnf" => Some(format!("sudo dnf install -y {}", package_name)),
+                "opensuse" | "opensuse-leap" | "opensuse-tumbleweed" | "zypper" => Some(format!("sudo zypper install -y {}", package_name)),
                 "gentoo" | "portage" => Some(format!("sudo emerge {}", package_name)),
                 "nixos" | "nix" => Some(format!("nix-env -i {}", package_name)),
                 "alpine" | "apk" => Some(format!("sudo apk add {}", package_name)),
+                "void" => Some(format!("sudo xbps-install {}", package_name)),
                 _ => None,
             }
         } else {
@@ -243,6 +246,264 @@ impl CompatibilityLayer {
             ].into(),
             description: Some("GNU Make build automation tool".to_string()),
             categories: vec!["dev-tools".to_string(), "build".to_string()],
+        });
+
+        // Additional development tools
+        self.add_mapping(PackageMapping {
+            canonical_name: "node".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "nodejs".to_string()),
+                ("debian".to_string(), "nodejs".to_string()),
+                ("ubuntu".to_string(), "nodejs".to_string()),
+                ("fedora".to_string(), "nodejs".to_string()),
+                ("opensuse".to_string(), "nodejs".to_string()),
+                ("gentoo".to_string(), "net-libs/nodejs".to_string()),
+                ("nixos".to_string(), "nodejs".to_string()),
+                ("alpine".to_string(), "nodejs".to_string()),
+            ].into(),
+            description: Some("JavaScript runtime built on Chrome's V8 JavaScript engine".to_string()),
+            categories: vec!["dev-tools".to_string(), "programming".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "npm".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "npm".to_string()),
+                ("debian".to_string(), "npm".to_string()),
+                ("ubuntu".to_string(), "npm".to_string()),
+                ("fedora".to_string(), "npm".to_string()),
+                ("opensuse".to_string(), "npm".to_string()),
+                ("gentoo".to_string(), "net-libs/nodejs".to_string()),
+                ("nixos".to_string(), "nodePackages.npm".to_string()),
+                ("alpine".to_string(), "npm".to_string()),
+            ].into(),
+            description: Some("Package manager for JavaScript".to_string()),
+            categories: vec!["dev-tools".to_string(), "package-managers".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "docker".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "docker".to_string()),
+                ("debian".to_string(), "docker.io".to_string()),
+                ("ubuntu".to_string(), "docker.io".to_string()),
+                ("fedora".to_string(), "docker".to_string()),
+                ("opensuse".to_string(), "docker".to_string()),
+                ("gentoo".to_string(), "app-containers/docker".to_string()),
+                ("nixos".to_string(), "docker".to_string()),
+                ("alpine".to_string(), "docker".to_string()),
+            ].into(),
+            description: Some("Platform for developing, shipping, and running applications".to_string()),
+            categories: vec!["dev-tools".to_string(), "containers".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "rust".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "rust".to_string()),
+                ("debian".to_string(), "rustc".to_string()),
+                ("ubuntu".to_string(), "rustc".to_string()),
+                ("fedora".to_string(), "rust".to_string()),
+                ("opensuse".to_string(), "rust".to_string()),
+                ("gentoo".to_string(), "dev-lang/rust".to_string()),
+                ("nixos".to_string(), "rustc".to_string()),
+                ("alpine".to_string(), "rust".to_string()),
+            ].into(),
+            description: Some("Systems programming language focused on safety, speed, and concurrency".to_string()),
+            categories: vec!["dev-tools".to_string(), "programming".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "go".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "go".to_string()),
+                ("debian".to_string(), "golang-go".to_string()),
+                ("ubuntu".to_string(), "golang-go".to_string()),
+                ("fedora".to_string(), "golang".to_string()),
+                ("opensuse".to_string(), "go".to_string()),
+                ("gentoo".to_string(), "dev-lang/go".to_string()),
+                ("nixos".to_string(), "go".to_string()),
+                ("alpine".to_string(), "go".to_string()),
+            ].into(),
+            description: Some("Open source programming language that makes it easy to build simple, reliable, and efficient software".to_string()),
+            categories: vec!["dev-tools".to_string(), "programming".to_string()],
+        });
+
+        // Web browsers
+        self.add_mapping(PackageMapping {
+            canonical_name: "firefox".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "firefox".to_string()),
+                ("cachyos".to_string(), "firefox".to_string()),
+                ("endeavouros".to_string(), "firefox".to_string()),
+                ("manjaro".to_string(), "firefox".to_string()),
+                ("debian".to_string(), "firefox-esr".to_string()),
+                ("ubuntu".to_string(), "firefox".to_string()),
+                ("pop".to_string(), "firefox".to_string()),
+                ("elementary".to_string(), "firefox".to_string()),
+                ("fedora".to_string(), "firefox".to_string()),
+                ("rhel".to_string(), "firefox".to_string()),
+                ("centos".to_string(), "firefox".to_string()),
+                ("rocky".to_string(), "firefox".to_string()),
+                ("almalinux".to_string(), "firefox".to_string()),
+                ("opensuse".to_string(), "MozillaFirefox".to_string()),
+                ("opensuse-leap".to_string(), "MozillaFirefox".to_string()),
+                ("opensuse-tumbleweed".to_string(), "MozillaFirefox".to_string()),
+                ("gentoo".to_string(), "www-client/firefox".to_string()),
+                ("nixos".to_string(), "firefox".to_string()),
+                ("alpine".to_string(), "firefox".to_string()),
+                ("void".to_string(), "firefox".to_string()),
+            ].into(),
+            description: Some("Free and open-source web browser".to_string()),
+            categories: vec!["browsers".to_string(), "internet".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "chromium".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "chromium".to_string()),
+                ("debian".to_string(), "chromium".to_string()),
+                ("ubuntu".to_string(), "chromium-browser".to_string()),
+                ("fedora".to_string(), "chromium".to_string()),
+                ("opensuse".to_string(), "chromium".to_string()),
+                ("gentoo".to_string(), "www-client/chromium".to_string()),
+                ("nixos".to_string(), "chromium".to_string()),
+                ("alpine".to_string(), "chromium".to_string()),
+            ].into(),
+            description: Some("Open-source version of Google Chrome web browser".to_string()),
+            categories: vec!["browsers".to_string(), "internet".to_string()],
+        });
+
+        // Text editors and IDEs
+        self.add_mapping(PackageMapping {
+            canonical_name: "neovim".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "neovim".to_string()),
+                ("debian".to_string(), "neovim".to_string()),
+                ("ubuntu".to_string(), "neovim".to_string()),
+                ("fedora".to_string(), "neovim".to_string()),
+                ("opensuse".to_string(), "neovim".to_string()),
+                ("gentoo".to_string(), "app-editors/neovim".to_string()),
+                ("nixos".to_string(), "neovim".to_string()),
+                ("alpine".to_string(), "neovim".to_string()),
+            ].into(),
+            description: Some("Vim-fork focused on extensibility and usability".to_string()),
+            categories: vec!["editors".to_string(), "terminal".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "vscode".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "code".to_string()),
+                ("debian".to_string(), "code".to_string()),
+                ("ubuntu".to_string(), "code".to_string()),
+                ("fedora".to_string(), "code".to_string()),
+                ("opensuse".to_string(), "code".to_string()),
+                ("gentoo".to_string(), "app-editors/vscode".to_string()),
+                ("nixos".to_string(), "vscode".to_string()),
+                ("alpine".to_string(), "code".to_string()),
+            ].into(),
+            description: Some("Visual Studio Code - code editor redefined and optimized for building and debugging modern applications".to_string()),
+            categories: vec!["editors".to_string(), "ide".to_string()],
+        });
+
+        // Media and graphics
+        self.add_mapping(PackageMapping {
+            canonical_name: "vlc".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "vlc".to_string()),
+                ("debian".to_string(), "vlc".to_string()),
+                ("ubuntu".to_string(), "vlc".to_string()),
+                ("fedora".to_string(), "vlc".to_string()),
+                ("opensuse".to_string(), "vlc".to_string()),
+                ("gentoo".to_string(), "media-video/vlc".to_string()),
+                ("nixos".to_string(), "vlc".to_string()),
+                ("alpine".to_string(), "vlc".to_string()),
+            ].into(),
+            description: Some("Cross-platform multimedia player and framework".to_string()),
+            categories: vec!["multimedia".to_string(), "video".to_string(), "audio".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "gimp".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "gimp".to_string()),
+                ("debian".to_string(), "gimp".to_string()),
+                ("ubuntu".to_string(), "gimp".to_string()),
+                ("fedora".to_string(), "gimp".to_string()),
+                ("opensuse".to_string(), "gimp".to_string()),
+                ("gentoo".to_string(), "media-gfx/gimp".to_string()),
+                ("nixos".to_string(), "gimp".to_string()),
+                ("alpine".to_string(), "gimp".to_string()),
+            ].into(),
+            description: Some("GNU Image Manipulation Program".to_string()),
+            categories: vec!["graphics".to_string(), "multimedia".to_string()],
+        });
+
+        // Archive tools
+        self.add_mapping(PackageMapping {
+            canonical_name: "unzip".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "unzip".to_string()),
+                ("debian".to_string(), "unzip".to_string()),
+                ("ubuntu".to_string(), "unzip".to_string()),
+                ("fedora".to_string(), "unzip".to_string()),
+                ("opensuse".to_string(), "unzip".to_string()),
+                ("gentoo".to_string(), "app-arch/unzip".to_string()),
+                ("nixos".to_string(), "unzip".to_string()),
+                ("alpine".to_string(), "unzip".to_string()),
+            ].into(),
+            description: Some("De-archiver for zip files".to_string()),
+            categories: vec!["tools".to_string(), "archive".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "zip".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "zip".to_string()),
+                ("debian".to_string(), "zip".to_string()),
+                ("ubuntu".to_string(), "zip".to_string()),
+                ("fedora".to_string(), "zip".to_string()),
+                ("opensuse".to_string(), "zip".to_string()),
+                ("gentoo".to_string(), "app-arch/zip".to_string()),
+                ("nixos".to_string(), "zip".to_string()),
+                ("alpine".to_string(), "zip".to_string()),
+            ].into(),
+            description: Some("Archiver for zip files".to_string()),
+            categories: vec!["tools".to_string(), "archive".to_string()],
+        });
+
+        // System utilities
+        self.add_mapping(PackageMapping {
+            canonical_name: "tree".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "tree".to_string()),
+                ("debian".to_string(), "tree".to_string()),
+                ("ubuntu".to_string(), "tree".to_string()),
+                ("fedora".to_string(), "tree".to_string()),
+                ("opensuse".to_string(), "tree".to_string()),
+                ("gentoo".to_string(), "app-text/tree".to_string()),
+                ("nixos".to_string(), "tree".to_string()),
+                ("alpine".to_string(), "tree".to_string()),
+            ].into(),
+            description: Some("Displays directories as trees (with optional color/HTML output)".to_string()),
+            categories: vec!["tools".to_string(), "system".to_string()],
+        });
+
+        self.add_mapping(PackageMapping {
+            canonical_name: "wget".to_string(),
+            distro_packages: [
+                ("arch".to_string(), "wget".to_string()),
+                ("debian".to_string(), "wget".to_string()),
+                ("ubuntu".to_string(), "wget".to_string()),
+                ("fedora".to_string(), "wget".to_string()),
+                ("opensuse".to_string(), "wget".to_string()),
+                ("gentoo".to_string(), "net-misc/wget".to_string()),
+                ("nixos".to_string(), "wget".to_string()),
+                ("alpine".to_string(), "wget".to_string()),
+            ].into(),
+            description: Some("Network utility to retrieve files from the Web".to_string()),
+            categories: vec!["network".to_string(), "tools".to_string()],
         });
     }
 

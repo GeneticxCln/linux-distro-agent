@@ -20,6 +20,7 @@ mod self_update;
 mod distributed_cache;
 mod signing_verification;
 mod compatibility_layer;
+mod package_sources;
 
 use clap::{Parser, Subcommand, CommandFactory};
 use clap_complete::{generate, Generator, Shell};
@@ -672,20 +673,77 @@ logger.verbose(format!("ID Like: {id_like}"));
                         logger.output(format!("To install '{package}', run: {cmd}"));
                     }
                 }
-                None => logger.error("Unable to determine package install command for this distribution"),
+                None => {
+                    // Package not found in native repos, check alternative sources
+                    logger.warn(format!("Package '{}' not found in native repositories", package));
+                    
+                    match package_sources::PackageSourceManager::new(cli.verbose, cli.quiet) {
+                        Ok(source_manager) => {
+                            let rt = tokio::runtime::Runtime::new().unwrap();
+                            let suggestions = rt.block_on(source_manager.suggest_alternatives(&package));
+                            
+                            for suggestion in suggestions {
+                                logger.info(&suggestion);
+                            }
+                            
+                            // Try to get the best source and show command
+                            if let Some(best_source) = rt.block_on(source_manager.get_best_source(&package)) {
+                                logger.info("");
+                                logger.info("💡 Recommended installation:");
+                                logger.output(format!("   {}", best_source.install_command));
+                                
+                                if execute {
+                                    match dialoguer::Confirm::new()
+                                        .with_prompt("Would you like to install from the recommended source?")
+                                        .interact() {
+                                        Ok(true) => {
+                                            let _ = CommandExecutor::execute_command(&best_source.install_command, true)?;
+                                        }
+                                        Ok(false) => logger.info("Installation cancelled"),
+                                        Err(_) => logger.error("Failed to get user confirmation"),
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => logger.error(format!("Failed to initialize package source manager: {}", e)),
+                    }
+                }
             }
         }
         Commands::Search { query, execute } => {
+            // Search in native repositories first
             match distro.get_package_search_command(&query) {
                 Some(cmd) => {
                     if execute {
                         let safe_to_run = CommandExecutor::is_safe_to_execute(&cmd);
                         let _ = CommandExecutor::execute_command(&cmd, !safe_to_run)?;
                     } else {
-                        logger.output(format!("To search for '{query}', run: {cmd}"));
+                        logger.output(format!("To search in native repositories for '{query}', run: {cmd}"));
                     }
                 }
-                None => logger.error("Unable to determine package search command for this distribution"),
+                None => logger.warn("Unable to determine native package search command for this distribution"),
+            }
+            
+            // Also search in alternative package sources
+            match package_sources::PackageSourceManager::new(cli.verbose, cli.quiet) {
+                Ok(source_manager) => {
+                    // Search for alternatives
+                    let search_results = source_manager.search_packages(&query).await;
+
+                    if !search_results.is_empty() {
+                        logger.info("");
+                        logger.info("📦 Alternative sources search results:");
+                        for result in search_results {
+                            logger.info(&result);
+                        }
+
+                        if !execute {
+                            logger.info("");
+                            logger.info("💡 Use --execute to run the native search command, or use 'lda install <package>' to install from alternative sources");
+                        }
+                    }
+                }
+                Err(e) => logger.verbose(format!("Could not search alternative sources: {}", e)),
             }
         }
         Commands::Update { execute } => {
