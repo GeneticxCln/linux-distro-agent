@@ -2,6 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use anyhow::Result;
+use crate::compatibility_layer::CompatibilityLayer;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DistroInfo {
@@ -87,19 +88,24 @@ impl DistroInfo {
     }
 
     pub fn get_package_install_command(&self, package: &str) -> Option<String> {
+        let compatibility_layer = CompatibilityLayer::new();
+        
+        let final_package = compatibility_layer.get_package_for_distro(package, self.id.as_deref().unwrap_or(""))
+            .unwrap_or_else(|| package.to_string());
+
         match self.package_manager.as_deref() {
-            Some("pacman") => Some(format!("sudo pacman -S {package}")),
-            Some("apt") => Some(format!("sudo apt install {package}")),
-            Some("dnf") => Some(format!("sudo dnf install {package}")),
-            Some("zypper") => Some(format!("sudo zypper install {package}")),
-            Some("portage") => Some(format!("sudo emerge {package}")),
-            Some("nix") => Some(format!("nix-env -iA nixpkgs.{package}")),
-            Some("apk") => Some(format!("sudo apk add {package}")),
-            Some("xbps") => Some(format!("sudo xbps-install {package}")),
-            Some("paru") => Some(format!("paru -S {package}")),
-            Some("yay") => Some(format!("yay -S {package}")),
-            Some("flatpak") => Some(format!("flatpak install {package}")),
-            Some("snap") => Some(format!("sudo snap install {package}")),
+            Some("pacman") => Some(format!("sudo pacman -S {}", final_package)),
+            Some("apt") => Some(format!("sudo apt install {}", final_package)),
+            Some("dnf") => Some(format!("sudo dnf install {}", final_package)),
+            Some("zypper") => Some(format!("sudo zypper install {}", final_package)),
+            Some("portage") => Some(format!("sudo emerge {}", final_package)),
+            Some("nix") => Some(format!("nix-env -iA nixpkgs.{}", final_package)),
+            Some("apk") => Some(format!("sudo apk add {}", final_package)),
+            Some("xbps") => Some(format!("sudo xbps-install {}", final_package)),
+            Some("paru") => Some(format!("paru -S {}", final_package)),
+            Some("yay") => Some(format!("yay -S {}", final_package)),
+            Some("flatpak") => Some(format!("flatpak install {}", final_package)),
+            Some("snap") => Some(format!("sudo snap install {}", final_package)),
             _ => None,
         }
     }
@@ -131,14 +137,19 @@ impl DistroInfo {
     }
 
     pub fn get_package_remove_command(&self, package: &str) -> Option<String> {
+        let compatibility_layer = CompatibilityLayer::new();
+        
+        let final_package = compatibility_layer.get_package_for_distro(package, self.id.as_deref().unwrap_or(""))
+            .unwrap_or_else(|| package.to_string());
+
         match self.package_manager.as_deref() {
-            Some("pacman") => Some(format!("sudo pacman -R {package}")),
-            Some("apt") => Some(format!("sudo apt remove {package}")),
-            Some("dnf") => Some(format!("sudo dnf remove {package}")),
-            Some("zypper") => Some(format!("sudo zypper remove {package}")),
-            Some("portage") => Some(format!("sudo emerge --unmerge {package}")),
-            Some("nix") => Some(format!("nix-env -e {package}")),
-            Some("apk") => Some(format!("sudo apk del {package}")),
+            Some("pacman") => Some(format!("sudo pacman -R {}", final_package)),
+            Some("apt") => Some(format!("sudo apt remove {}", final_package)),
+            Some("dnf") => Some(format!("sudo dnf remove {}", final_package)),
+            Some("zypper") => Some(format!("sudo zypper remove {}", final_package)),
+            Some("portage") => Some(format!("sudo emerge --unmerge {}", final_package)),
+            Some("nix") => Some(format!("nix-env -e {}", final_package)),
+            Some("apk") => Some(format!("sudo apk del {}", final_package)),
             _ => None,
         }
     }

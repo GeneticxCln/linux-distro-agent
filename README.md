@@ -1,7 +1,7 @@
-# 🐧 Linux Distribution Agent (LDA) v4.6.0
+# 🐧 Linux Distribution Agent (LDA) v4.8.0
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-4.6.0-blue.svg)]()
+[![Version](https://img.shields.io/badge/version-4.8.0-blue.svg)]()
 [![Rust](https://img.shields.io/badge/rust-2024-red.svg)](https://www.rust-lang.org/)
 
 **One tool to rule them all - manage packages on any Linux distro with the same commands! 🚀**
@@ -44,6 +44,14 @@ It detects your distro and gives you the right commands, every time.
 - **Configuration Management**: Manage tool settings and preferences
 - **Cache System**: Efficient caching for improved performance
 - **Shell Completions**: Support for bash, zsh, fish, and PowerShell
+
+### 🆕 **New in v4.8.0** ⭐ **LATEST**
+- **🔄 Translation Layer**: Fully integrated cross-distribution package management with automatic canonical-to-distro package name translation
+- **📦 Universal Package Commands**: Use the same canonical package names (like `git`, `python3`, `vim`) across all distributions
+- **🎯 Smart Package Mapping**: Intelligent translation of package names (e.g., `python3` → `python` on Arch, `dev-lang/python` on Gentoo)
+- **🔍 Package Discovery**: Browse packages by categories, search by terms, and explore the package database
+- **🌐 Cross-Distribution Development**: Target specific distributions for development and testing workflows
+- **⚡ Seamless Integration**: All existing install/remove commands now use translation layer automatically
 
 ### 🆕 **New in v4.6.0** ⭐
 - **🔒 Security Auditing**: Comprehensive security analysis and system hardening recommendations
@@ -458,6 +466,54 @@ linux-distro-agent completions <SHELL>
 ```
 
 **Supported shells:** `bash`, `zsh`, `fish`, `powershell`, `elvish`
+
+#### `compat` ⭐ **NEW in v4.8.0**
+Compatibility layer - cross-distribution package management.
+
+```bash
+linux-distro-agent compat [OPTIONS]
+```
+
+**Options:**
+- `--translate <PACKAGE>`: Translate package name to distribution-specific name
+- `--category <NAME>`: Show packages in a category
+- `--list-categories`: List all available categories
+- `--search <TERM>`: Find similar packages by search term
+- `--list-packages`: Show all canonical package names
+- `--target-distro <DISTRO>`: Target distribution for translation
+
+**Examples:**
+```bash
+# Translate package for current distribution
+$ linux-distro-agent compat --translate git
+✓ Canonical: git -> Distro-specific: git
+Install command: sudo pacman -S git
+
+# Translate for specific distribution
+$ linux-distro-agent compat --translate git --target-distro gentoo
+✓ Canonical: git -> Distro-specific: dev-vcs/git
+Install command: sudo emerge dev-vcs/git
+
+# List all categories
+$ linux-distro-agent compat --list-categories
+Available Package Categories:
+• dev-tools
+• editors
+• multimedia
+• network
+
+# Show packages in category
+$ linux-distro-agent compat --category dev-tools
+Packages in category 'dev-tools':
+  git -> git (Git version control system)
+  gcc -> gcc (GNU Compiler Collection)
+  python3 -> python (Python 3 programming language)
+
+# Search for packages
+$ linux-distro-agent compat --search video
+Searching for packages matching 'video':
+  ffmpeg -> ffmpeg (Complete solution to record, convert and stream audio and video)
+```
 
 ### 🆕 New Commands in v0.3.0
 
