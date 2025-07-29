@@ -525,6 +525,7 @@ Err(anyhow::anyhow!("Key not found: {}", key_id))
 }
 
 // Command-line interface functions
+#[allow(dead_code)]
 pub fn handle_signing_verification_command(args: &[String]) -> Result<()> {
     let config_dir = dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
