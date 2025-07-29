@@ -87,16 +87,9 @@ pub enum PluginStatus {
     NotFound,
 }
 
-pub trait Plugin {
-    fn metadata(&self) -> &PluginMetadata;
-    fn initialize(&mut self, config: &PluginConfig) -> Result<()>;
-    fn execute(&self, args: &[String]) -> Result<String>;
-    fn cleanup(&self) -> Result<()>;
-}
 
 pub struct PluginManager {
     plugins: HashMap<String, PluginInfo>,
-    plugin_dirs: Vec<PathBuf>,
     config_dir: PathBuf,
 }
 
@@ -107,56 +100,12 @@ impl PluginManager {
             .join("linux-distro-agent")
             .join("plugins");
 
-        let plugin_dirs = vec![
-            config_dir.join("user"),
-            PathBuf::from("/usr/share/linux-distro-agent/plugins"),
-            PathBuf::from("/opt/linux-distro-agent/plugins"),
-        ];
-
         Ok(Self {
             plugins: HashMap::new(),
-            plugin_dirs,
             config_dir,
         })
     }
 
-    pub fn discover_plugins(&mut self) -> Result<()> {
-        for plugin_dir in self.plugin_dirs.clone() {
-            if plugin_dir.exists() {
-                self.scan_plugin_directory(&plugin_dir)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn scan_plugin_directory(&mut self, dir: &Path) -> Result<()> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            
-            if path.is_dir() {
-                let manifest_path = path.join("plugin.toml");
-                if manifest_path.exists() {
-                    match self.load_plugin_metadata(&manifest_path) {
-                        Ok(metadata) => {
-                            let config = self.load_plugin_config(&metadata.name)?;
-                            let plugin_info = PluginInfo {
-                                metadata,
-                                config,
-                                path: path.clone(),
-                                status: PluginStatus::Loaded,
-                            };
-                            self.plugins.insert(plugin_info.metadata.name.clone(), plugin_info);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to load plugin from {}: {}", path.display(), e);
-                        }
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
 
     fn load_plugin_metadata(&self, manifest_path: &Path) -> Result<PluginMetadata> {
         let content = fs::read_to_string(manifest_path)?;
@@ -516,7 +465,6 @@ impl Default for PluginManager {
         Self::new().unwrap_or_else(|_| {
             Self {
                 plugins: HashMap::new(),
-                plugin_dirs: vec![],
                 config_dir: PathBuf::from("/tmp/lda-plugins"),
             }
         })

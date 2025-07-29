@@ -13,6 +13,9 @@ pub struct CacheStats {
 pub struct PackageCache {
     cache: HashMap<String, CacheEntry>,
     expiration_duration: Duration,
+    last_cleanup: Option<SystemTime>,
+    hit_count: u64,
+    miss_count: u64,
 }
 
 struct CacheEntry {
@@ -25,6 +28,9 @@ impl PackageCache {
         PackageCache {
             cache: HashMap::new(),
             expiration_duration,
+            last_cleanup: None,
+            hit_count: 0,
+            miss_count: 0,
         }
     }
 
@@ -39,8 +45,10 @@ impl PackageCache {
     pub fn retrieve(&mut self, package_name: &str) -> Option<&Vec<u8>> {
         if let Some(entry) = self.cache.get_mut(package_name) {
             entry.last_accessed = SystemTime::now();
+            self.hit_count += 1;
             return Some(&entry.data);
         }
+        self.miss_count += 1;
         None
     }
 
@@ -49,6 +57,7 @@ impl PackageCache {
         self.cache.retain(|_, entry| {
             now.duration_since(entry.last_accessed).unwrap() < self.expiration_duration
         });
+        self.last_cleanup = Some(now);
     }
 
     pub fn get_cache_stats(&self) -> CacheStats {
@@ -60,9 +69,9 @@ impl PackageCache {
         CacheStats {
             total_entries,
             total_size_bytes,
-            hit_count: 0,  // Placeholder - would need tracking for real implementation
-            miss_count: 0, // Placeholder - would need tracking for real implementation
-            last_cleanup: None, // Placeholder - would need tracking for real implementation
+            hit_count: self.hit_count,
+            miss_count: self.miss_count,
+            last_cleanup: self.last_cleanup,
         }
     }
 

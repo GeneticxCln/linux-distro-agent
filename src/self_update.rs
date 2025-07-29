@@ -64,8 +64,6 @@ pub struct UpdateInfo {
 
 #[derive(Debug)]
 pub struct PlatformInfo {
-    pub os: String,
-    pub arch: String,
     pub target_triple: String,
     pub binary_name: String,
 }
@@ -130,8 +128,6 @@ impl PlatformInfo {
         };
 
         Ok(Self {
-            os: os.to_string(),
-            arch: arch.to_string(),
             target_triple: target_triple.to_string(),
             binary_name: binary_name.to_string(),
         })
@@ -745,22 +741,6 @@ impl SelfUpdater {
         Ok(())
     }
 
-    /// Check if automatic update is due
-    pub fn should_check_for_updates(&self) -> bool {
-        // This would typically check against a stored timestamp
-        // For now, we'll assume it should check
-        true
-    }
-
-    /// Get update configuration
-    pub fn get_config(&self) -> &UpdateConfig {
-        &self.config
-    }
-
-    /// Update configuration
-    pub fn update_config(&mut self, new_config: UpdateConfig) {
-        self.config = new_config;
-    }
 }
 
 // Implement tempfile functionality if not available

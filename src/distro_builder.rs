@@ -9,10 +9,8 @@ use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tokio::sync::{Semaphore, Mutex};
 use futures::future::try_join_all;
-use rayon::prelude::*;
 use std::collections::HashMap;
 use sha2::{Sha256, Digest};
-use std::io::Write;
 
 // Enhanced logging and progress tracking
 #[derive(Debug, Clone)]
@@ -67,9 +65,6 @@ impl BuildProgress {
         println!("   ⚠️  WARNING: {}", message);
     }
     
-    pub fn log_error(&self, message: &str) {
-        println!("   ❌ ERROR: {}", message);
-    }
     
     pub fn get_build_summary(&self) -> String {
         let total_duration = self.start_time.elapsed();
@@ -367,17 +362,6 @@ pub struct PackageCacheEntry {
     pub cached_path: PathBuf,
 }
 
-// Performance monitoring
-#[derive(Debug, Clone)]
-pub struct PerformanceMetrics {
-    pub total_duration: std::time::Duration,
-    pub step_durations: HashMap<String, std::time::Duration>,
-    pub parallel_tasks: usize,
-    pub cache_hits: usize,
-    pub cache_misses: usize,
-    pub downloaded_packages: usize,
-    pub total_download_size: u64,
-}
 
 // Configuration validation
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -912,6 +896,18 @@ impl DistroBuilder {
     }
 
     pub async fn build(&self) -> Result<PathBuf> {
+        // Validate configuration before building
+        let validation_result = self.validate_config();
+        if !validation_result.is_valid {
+            self.print_validation_results(&validation_result);
+            return Err(anyhow::anyhow!("Configuration validation failed"));
+        }
+        
+        // Print validation results if there are warnings
+        if !validation_result.warnings.is_empty() {
+            self.print_validation_results(&validation_result);
+        }
+        
         // Generate unique build ID
         let build_id = format!("{}-{}", 
                               self.config.name, 
@@ -1951,146 +1947,6 @@ LABEL {default}fallback
         format!("{:x}", hasher.finalize())
     }
     
-    // Enhanced filesystem operations with progress tracking
-    async fn create_iso_optimized(&self) -> Result<PathBuf> {
-        println!("💿 Creating ISO image with optimizations...");
-        
-        let iso_dir = self.work_dir.join("iso");
-        let rootfs_dir = self.work_dir.join("rootfs");
-        
-        // Create SquashFS with optimized compression settings
-        println!("🗜️  Creating optimized SquashFS filesystem...");
-        let squashfs_path = iso_dir.join("live").join("filesystem.squashfs");
-        fs::create_dir_all(iso_dir.join("live"))?;
-        
-        let compression_start = Instant::now();
-        let mut mksquashfs_cmd = AsyncCommand::new("mksquashfs");
-        mksquashfs_cmd.arg(&rootfs_dir)
-                     .arg(&squashfs_path)
-                     .arg("-e")
-                     .arg("boot") // Exclude boot directory from squashfs
-                     .arg("-info") // Show compression info
-                     .arg("-progress"); // Show progress
-        
-        // Apply compression settings with performance optimizations
-        match self.config.filesystem.compression {
-            CompressionType::Gzip => {
-                mksquashfs_cmd.arg("-comp").arg("gzip").arg("-Xcompression-level").arg("6");
-            }
-            CompressionType::Xz => {
-                mksquashfs_cmd.arg("-comp").arg("xz").arg("-Xdict-size").arg("1M");
-            }
-            CompressionType::Zstd => {
-                mksquashfs_cmd.arg("-comp").arg("zstd").arg("-Xcompression-level").arg("10");
-            }
-            CompressionType::Lz4 => {
-                mksquashfs_cmd.arg("-comp").arg("lz4").arg("-Xhc");
-            }
-            CompressionType::None => {}
-        }
-        
-        // Use multiple processors if available
-        if self.config.build_options.parallel_builds {
-            let processors = num_cpus::get().min(8); // Cap at 8 to avoid memory issues
-            mksquashfs_cmd.arg("-processors").arg(processors.to_string());
-            println!("🚀 Using {} processors for compression", processors);
-        }
-
-        let output = mksquashfs_cmd.output().await?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            anyhow::bail!("mksquashfs failed: {}", stderr);
-        }
-        
-        let compression_time = compression_start.elapsed();
-        println!("✅ SquashFS created successfully in {:.1}s", compression_time.as_secs_f64());
-        
-        // Show compression statistics
-        if let Ok(metadata) = fs::metadata(&squashfs_path) {
-            let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
-            println!("📊 Compressed filesystem size: {:.1} MB", size_mb);
-        }
-
-        // Copy boot files efficiently (parallel if safe)
-        println!("📁 Copying boot files...");
-        self.copy_boot_files_optimized(&iso_dir, &rootfs_dir).await?;
-        
-        // Copy syslinux files
-        self.copy_syslinux_files(&iso_dir).await?;
-
-        // Create ISO with xorriso
-        println!("💿 Creating ISO with xorriso...");
-        let iso_filename = format!("{}-{}-{}.iso", 
-                                 self.config.name, 
-                                 self.config.version,
-                                 self.config.architecture);
-        let iso_path = self.output_dir.join(iso_filename);
-
-        let iso_start = Instant::now();
-        let mut xorriso_cmd = AsyncCommand::new("xorriso");
-        xorriso_cmd.arg("-as").arg("mkisofs")
-                   .arg("-iso-level").arg("3")
-                   .arg("-full-iso9660-filenames")
-                   .arg("-volid").arg(&self.config.name)
-                   .arg("-eltorito-boot").arg("boot/isolinux/isolinux.bin")
-                   .arg("-eltorito-catalog").arg("boot/isolinux/boot.cat")
-                   .arg("-no-emul-boot")
-                   .arg("-boot-load-size").arg("4")
-                   .arg("-boot-info-table")
-                   .arg("-isohybrid-mbr").arg("/usr/lib/syslinux/bios/isohdpfx.bin")
-                   .arg("-output").arg(&iso_path)
-                   .arg(&iso_dir);
-
-        let output = xorriso_cmd.output().await?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            println!("STDOUT: {}", stdout);
-            anyhow::bail!("xorriso failed: {}", stderr);
-        }
-
-        let iso_time = iso_start.elapsed();
-        println!("✅ ISO created successfully in {:.1}s: {}", iso_time.as_secs_f64(), iso_path.display());
-        Ok(iso_path)
-    }
-    
-    async fn copy_boot_files_optimized(&self, iso_dir: &Path, rootfs_dir: &Path) -> Result<()> {
-        fs::create_dir_all(iso_dir.join("boot"))?;
-        
-        let rootfs_boot = rootfs_dir.join("boot");
-        if !rootfs_boot.exists() {
-            return Ok(());
-        }
-        
-        let boot_files: Vec<_> = fs::read_dir(&rootfs_boot)?
-            .filter_map(|entry| entry.ok())
-            .filter(|entry| {
-                let binding = entry.file_name();
-                let name = binding.to_string_lossy();
-                name.starts_with("vmlinuz") || name.starts_with("initramfs")
-            })
-            .collect();
-        
-        println!("📁 Copying {} boot files", boot_files.len());
-        
-        for entry in boot_files {
-            let dst = iso_dir.join("boot").join(entry.file_name());
-            
-            let copy_start = Instant::now();
-            fs::copy(entry.path(), &dst)?;
-            let copy_time = copy_start.elapsed();
-            
-            if let Ok(metadata) = fs::metadata(&dst) {
-                let size_mb = metadata.len() as f64 / 1024.0 / 1024.0;
-                println!("✅ Copied {} ({:.1} MB) in {:.2}s", 
-                        entry.file_name().to_string_lossy(), size_mb, copy_time.as_secs_f64());
-            }
-        }
-        
-        Ok(())
-    }
 }
 
 impl Default for DistroConfig {

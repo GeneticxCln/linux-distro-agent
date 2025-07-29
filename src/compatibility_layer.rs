@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use anyhow::Result;
-use std::process::Command;
-use crate::config_manager::Config;
 
 /// Maps package names across different distributions
 #[derive(Debug, Clone, Serialize, Deserialize)]

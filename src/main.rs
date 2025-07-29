@@ -97,6 +97,8 @@ enum CacheAction {
         /// Cache key
         key: String,
     },
+    /// Clean up expired distributed cache entries
+    DistributedCleanup,
 }
 
 #[derive(Subcommand)]
@@ -365,6 +367,18 @@ enum Commands {
         /// Plugin type for template creation
         #[clap(long, default_value = "command")]
         plugin_type: String,
+        /// Grant permission to a plugin
+        #[clap(long)]
+        grant_permission: Option<String>,
+        /// Revoke permission from a plugin
+        #[clap(long)]
+        revoke_permission: Option<String>,
+        /// Permission type (filesystem-read, filesystem-write, system-info, network)
+        #[clap(long)]
+        permission_type: Option<String>,
+        /// Permission target (e.g., path for filesystem permissions)
+        #[clap(long)]
+        permission_target: Option<String>,
     },
     /// AI Agent - Intelligent task planning and execution
     Agent {
@@ -401,9 +415,39 @@ enum Commands {
         /// Verify repository signatures
         #[clap(long)]
         repo: bool,
+        /// Repository name for metadata verification
+        #[clap(long)]
+        repo_name: Option<String>,
+        /// Metadata path for repository verification
+        #[clap(long)]
+        metadata_path: Option<PathBuf>,
         /// Trust level for verification (low, medium, high)
         #[clap(long, default_value = "medium")]
         trust_level: String,
+        /// Add a trusted key
+        #[clap(long)]
+        add_key: Option<PathBuf>,
+        /// Owner name for the key being added
+        #[clap(long)]
+        key_owner: Option<String>,
+        /// Email for the key being added
+        #[clap(long)]
+        key_email: Option<String>,
+        /// Remove a trusted key by key ID
+        #[clap(long)]
+        remove_key: Option<String>,
+        /// List all trusted keys
+        #[clap(long)]
+        list_keys: bool,
+        /// Export trusted keys to file
+        #[clap(long)]
+        export_keys: Option<PathBuf>,
+        /// Import trusted keys from file
+        #[clap(long)]
+        import_keys: Option<PathBuf>,
+        /// Batch verify multiple packages
+        #[clap(long)]
+        batch_verify: Vec<PathBuf>,
     },
     /// Compatibility layer - cross-distribution package management
     Compat {
@@ -962,8 +1006,12 @@ match String::from_utf8(value.to_vec()) {
                                 Err(_) => logger.output(format!("Value for '{key}': <binary data>")),
                             }
                         }
-                        None => logger.info(format!("No value found for key '{key}'")),
+                        None => logger.info(format!("No value found for key '{key}'"))
                     }
+                }
+                CacheAction::DistributedCleanup => {
+                    distributed_cache.cleanup();
+                    logger.success("Distributed cache cleaned up - expired entries removed");
                 }
             }
         }
@@ -1340,7 +1388,7 @@ match String::from_utf8(value.to_vec()) {
                 }
             }
         }
-        Commands::Plugin { list, info, enable, disable, exec, args, install, uninstall, create, plugin_type } => {
+        Commands::Plugin { list, info, enable, disable, exec, args, install, uninstall, create, plugin_type, grant_permission, revoke_permission, permission_type, permission_target } => {
             let mut plugin_manager = plugins::PluginManager::new()?;
 
             if list {
@@ -1414,8 +1462,64 @@ match String::from_utf8(value.to_vec()) {
                     Err(e) => logger.error(format!("Failed to create plugin template: {}", e)),
                 }
             }
+
+            if let Some(plugin_name) = grant_permission {
+                if let Some(ref perm_type) = permission_type {
+                    let permission = match perm_type.as_str() {
+                        "filesystem-read" => {
+                            let path = permission_target.as_ref().map(|s| s.clone()).unwrap_or_else(|| "/".to_string());
+                            plugins::Permission::FileSystem(plugins::FileSystemPermission::Read(path))
+                        }
+                        "filesystem-write" => {
+                            let path = permission_target.as_ref().map(|s| s.clone()).unwrap_or_else(|| "/".to_string());
+                            plugins::Permission::FileSystem(plugins::FileSystemPermission::Write(path))
+                        }
+                        "system-info" => plugins::Permission::System(plugins::SystemPermission::SystemInfo),
+                        "network" => plugins::Permission::Network(plugins::NetworkPermission::HttpClient),
+                        _ => {
+                            logger.error(format!("Unknown permission type: {}. Available types: filesystem-read, filesystem-write, system-info, network", perm_type));
+                            return Ok(());
+                        }
+                    };
+                    
+                    match plugin_manager.grant_permission(&plugin_name, permission) {
+                        Ok(()) => logger.success(format!("Permission '{}' granted to plugin '{}'", perm_type, plugin_name)),
+                        Err(e) => logger.error(format!("Failed to grant permission to plugin '{}': {}", plugin_name, e)),
+                    }
+                } else {
+                    logger.error("Permission type is required when granting permissions");
+                }
+            }
+
+            if let Some(plugin_name) = revoke_permission {
+                if let Some(ref perm_type) = permission_type {
+                    let permission = match perm_type.as_str() {
+                        "filesystem-read" => {
+                            let path = permission_target.as_ref().map(|s| s.clone()).unwrap_or_else(|| "/".to_string());
+                            plugins::Permission::FileSystem(plugins::FileSystemPermission::Read(path))
+                        }
+                        "filesystem-write" => {
+                            let path = permission_target.as_ref().map(|s| s.clone()).unwrap_or_else(|| "/".to_string());
+                            plugins::Permission::FileSystem(plugins::FileSystemPermission::Write(path))
+                        }
+                        "system-info" => plugins::Permission::System(plugins::SystemPermission::SystemInfo),
+                        "network" => plugins::Permission::Network(plugins::NetworkPermission::HttpClient),
+                        _ => {
+                            logger.error(format!("Unknown permission type: {}. Available types: filesystem-read, filesystem-write, system-info, network", perm_type));
+                            return Ok(());
+                        }
+                    };
+                    
+                    match plugin_manager.revoke_permission(&plugin_name, &permission) {
+                        Ok(()) => logger.success(format!("Permission '{}' revoked from plugin '{}'", perm_type, plugin_name)),
+                        Err(e) => logger.error(format!("Failed to revoke permission from plugin '{}': {}", plugin_name, e)),
+                    }
+                } else {
+                    logger.error("Permission type is required when revoking permissions");
+                }
+            }
         }
-        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run } => {
+        Commands::Agent { start, add_task, status, stats, clear_tasks, dry_run: _ } => {
             let mut agent = agent::IntelligentAgent::new(cli.verbose, cli.quiet);
             
             if start {
@@ -1507,14 +1611,18 @@ match String::from_utf8(value.to_vec()) {
                 logger.info("Use --dry-run to enable dry-run mode");
             }
         }
-        Commands::Verify { package, key_id: _, details, repo, trust_level: _ } => {
+        Commands::Verify { 
+            package, key_id: _, details, repo, repo_name, metadata_path, trust_level: _, 
+            add_key, key_owner, key_email, remove_key, list_keys, 
+            export_keys, import_keys, batch_verify 
+        } => {
             use signing_verification::SigningVerificationManager;
             
             let config_dir = dirs::config_dir()
                 .unwrap_or_else(|| std::path::PathBuf::from("."))
                 .join("linux-distro-agent");
             
-            let manager = match SigningVerificationManager::new(&config_dir) {
+            let mut manager = match SigningVerificationManager::new(&config_dir) {
                 Ok(m) => m,
                 Err(e) => {
                     logger.error(format!("Failed to initialize signing verification: {}", e));
@@ -1522,6 +1630,104 @@ match String::from_utf8(value.to_vec()) {
                 }
             };
             
+            // Handle key management operations
+            if let Some(key_path) = add_key {
+                if let (Some(owner), Some(email)) = (key_owner, key_email) {
+                    match manager.add_trusted_key(&key_path, &owner, &email) {
+                        Ok(()) => logger.success(format!("Added trusted key from: {}", key_path.display())),
+                        Err(e) => logger.error(format!("Failed to add trusted key: {}", e)),
+                    }
+                } else {
+                    logger.error("Both --key-owner and --key-email are required when adding a key");
+                }
+                return Ok(());
+            }
+            
+            if let Some(key_id) = remove_key {
+                match manager.remove_trusted_key(&key_id) {
+                    Ok(()) => logger.success(format!("Removed trusted key: {}", key_id)),
+                    Err(e) => logger.error(format!("Failed to remove trusted key: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            if list_keys {
+                let keys = manager.list_trusted_keys();
+                if keys.is_empty() {
+                    logger.info("No trusted keys configured");
+                } else {
+                    logger.info("Trusted Keys:");
+                    for key in keys {
+                        logger.output(format!("• {} - {} <{}> (Trust: {:?}, Added: {})", 
+                            key.key_id, key.owner, key.email, key.trust_level,
+                            key.added_date.format("%Y-%m-%d %H:%M:%S")
+                        ));
+                    }
+                }
+                return Ok(());
+            }
+            
+            if let Some(export_path) = export_keys {
+                match manager.export_trusted_keys(&export_path) {
+                    Ok(()) => logger.success(format!("Exported trusted keys to: {}", export_path.display())),
+                    Err(e) => logger.error(format!("Failed to export trusted keys: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            if let Some(import_path) = import_keys {
+                match manager.import_trusted_keys(&import_path) {
+                    Ok(()) => logger.success(format!("Imported trusted keys from: {}", import_path.display())),
+                    Err(e) => logger.error(format!("Failed to import trusted keys: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            // Handle batch verification
+            if !batch_verify.is_empty() {
+                logger.info(format!("Batch verifying {} packages...", batch_verify.len()));
+                match manager.batch_verify_packages(&batch_verify) {
+                    Ok(results) => {
+                        for (path, sig_info) in results {
+                            let status = if sig_info.valid {
+                                if manager.list_trusted_keys().iter().any(|k| k.key_id == sig_info.key_id) {
+                                    "✓ Valid (trusted)"
+                                } else {
+                                    "⚠ Valid (untrusted)"
+                                }
+                            } else {
+                                "✗ Invalid"
+                            };
+                            logger.output(format!("{} - {} (Key: {})", 
+                                path.display(), status, sig_info.key_id
+                            ));
+                        }
+                    }
+                    Err(e) => logger.error(format!("Batch verification failed: {}", e)),
+                }
+                return Ok(());
+            }
+            
+            // Handle repository verification
+            if repo {
+                if let (Some(repo_name), Some(metadata_path)) = (repo_name, metadata_path) {
+                    match manager.verify_repository_metadata(&repo_name, &metadata_path) {
+                        Ok(valid) => {
+                            if valid {
+                                logger.success(format!("✓ Repository '{}' metadata verification passed", repo_name));
+                            } else {
+                                logger.error(format!("✗ Repository '{}' metadata verification failed", repo_name));
+                            }
+                        }
+                        Err(e) => logger.error(format!("Repository verification error: {}", e)),
+                    }
+                } else {
+                    logger.error("Both --repo-name and --metadata-path are required for repository verification");
+                }
+                return Ok(());
+            }
+            
+            // Handle single package verification
             if let Some(package_path) = package {
                 match manager.get_signing_status(&package_path) {
                     Ok(status) => {
@@ -1543,21 +1749,39 @@ match String::from_utf8(value.to_vec()) {
                     }
                     Err(e) => logger.error(format!("Package verification failed: {}", e)),
                 }
-            } else if repo {
-                logger.info("Repository signature verification not yet implemented");
             } else {
-                logger.info("Package Signing and Verification:");
-                logger.info("Use --package <path> to verify a package signature");
-                logger.info("Use --details for detailed signature information");
-                logger.info("Use --repo to verify repository signatures");
+                // Show help if no specific operation requested
+                logger.info("📋 Package Signing and Verification:");
+                logger.info("");
+                logger.info("Package Operations:");
+                logger.info("  --package <path>             Verify a single package signature");
+                logger.info("  --details                    Show detailed signature information");
+                logger.info("  --batch-verify <paths...>    Verify multiple packages at once");
+                logger.info("");
+                logger.info("Key Management:");
+                logger.info("  --add-key <path> --key-owner <name> --key-email <email>  Add trusted key");
+                logger.info("  --remove-key <key-id>        Remove trusted key");
+                logger.info("  --list-keys                  List all trusted keys");
+                logger.info("  --export-keys <path>         Export trusted keys to file");
+                logger.info("  --import-keys <path>         Import trusted keys from file");
+                logger.info("");
+                logger.info("Repository Operations:");
+                logger.info("  --repo --repo-name <name> --metadata-path <path>  Verify repository metadata");
+                logger.info("");
+                logger.info("💡 Examples:");
+                logger.info("  lda verify --package ./package.rpm --details");
+                logger.info("  lda verify --add-key ./key.gpg --key-owner 'John Doe' --key-email 'john@example.com'");
+                logger.info("  lda verify --batch-verify ./pkg1.deb ./pkg2.deb ./pkg3.deb");
             }
         }
         Commands::Compat { translate, category, list_categories, search, list_packages, target_distro } => {
             use compatibility_layer::CompatibilityLayer;
-            
-            let compat = CompatibilityLayer::new();
-            let target_distro = target_distro.as_deref().unwrap_or(distro.id.as_deref().unwrap_or("unknown"));
-            
+
+            let mut compat = CompatibilityLayer::new();
+            let target_distro = target_distro
+                .as_deref()
+                .unwrap_or(distro.id.as_deref().unwrap_or("unknown"));
+
             if list_categories {
                 logger.info("Available Package Categories:");
                 let categories = compat.get_categories();
@@ -1571,10 +1795,12 @@ match String::from_utf8(value.to_vec()) {
                     logger.info("No packages found in this category");
                 } else {
                     for pkg in packages {
-                        let distro_pkg = compat.get_package_for_distro(&pkg.canonical_name, target_distro)
-                            .unwrap_or_else(|| "N/A".to_string());
-                        logger.output(format!("  {} -> {} ({})", 
-                            pkg.canonical_name, 
+                        let distro_pkg =
+                            compat.get_package_for_distro(&pkg.canonical_name, target_distro)
+                                .unwrap_or_else(|| "N/A".to_string());
+                        logger.output(format!(
+                            "  {} -> {} ({})",
+                            pkg.canonical_name,
                             distro_pkg,
                             pkg.description.as_deref().unwrap_or("No description")
                         ));
@@ -1587,54 +1813,87 @@ match String::from_utf8(value.to_vec()) {
                     logger.info("No packages found matching the search term");
                 } else {
                     for pkg in packages {
-                        let distro_pkg = compat.get_package_for_distro(&pkg.canonical_name, target_distro)
-                            .unwrap_or_else(|| "N/A".to_string());
-                        logger.output(format!("  {} -> {} ({})", 
-                            pkg.canonical_name, 
+                        let distro_pkg =
+                            compat.get_package_for_distro(&pkg.canonical_name, target_distro)
+                                .unwrap_or_else(|| "N/A".to_string());
+                        logger.output(format!(
+                            "  {} -> {} ({})",
+                            pkg.canonical_name,
                             distro_pkg,
                             pkg.description.as_deref().unwrap_or("No description")
                         ));
                     }
                 }
             } else if let Some(package_name) = translate {
-                logger.info(format!("Translating '{}' for {}:", package_name, target_distro));
+                logger.info(format!(
+                    "Translating '{}' for {}:",
+                    package_name, target_distro
+                ));
                 match compat.get_package_for_distro(&package_name, target_distro) {
                     Some(distro_pkg) => {
-                        logger.success(format!("Canonical: {} -> Distro-specific: {}", package_name, distro_pkg));
-                        
+                        logger.success(format!(
+                            "Canonical: {} -> Distro-specific: {}",
+                            package_name, distro_pkg
+                        ));
+
                         // Show install command for this distro
-                        if let Some(install_cmd) = compat.get_install_command(&package_name, target_distro) {
+                        if let Some(install_cmd) =
+                            compat.get_install_command(&package_name, target_distro)
+                        {
                             logger.info(format!("Install command: {}", install_cmd));
                         } else {
                             logger.warn("No install command available for this distribution");
                         }
                     }
                     None => {
-                        logger.warn(format!("No translation found for '{}' on {}", package_name, target_distro));
+                        logger.warn(format!(
+                            "No translation found for '{}' on {}",
+                            package_name, target_distro
+                        ));
                         logger.info("💡 Try searching for similar packages with --search");
                     }
                 }
             } else if list_packages {
                 logger.info("All canonical package names:");
+
+                // Use load/save capabilities to demonstrate file interaction
+                let temp_file = "/tmp/compatibility_layer.json";
+                match compat.save_to_file(PathBuf::from(temp_file).as_path()) {
+                    Ok(_) => logger.success(format!("Saved package mappings to: {}", temp_file)),
+                    Err(e) => logger.error(format!("Failed to save mappings: {}", e)),
+                }
+
+                match compat.load_from_file(PathBuf::from(temp_file).as_path()) {
+                    Ok(_) => logger.success(format!("Loaded package mappings from: {}", temp_file)),
+                    Err(e) => logger.error(format!("Failed to load mappings: {}", e)),
+                }
+
                 let mut packages: Vec<_> = compat.mappings.keys().collect();
                 packages.sort();
                 for pkg_name in packages {
                     let mapping = &compat.mappings[pkg_name];
-                    logger.output(format!("• {} - {}", 
-                        pkg_name, 
+                    logger.output(format!(
+                        "• {} - {}",
+                        pkg_name,
                         mapping.description.as_deref().unwrap_or("No description")
                     ));
                 }
             } else {
-                logger.info("🔄 Compatibility Layer - Cross-distribution package management");
+                logger.info(
+                    "🔄 Compatibility Layer - Cross-distribution package management"
+                );
                 logger.info("");
                 logger.info("Available commands:");
-                logger.info("  --translate <package>     Translate package name to current distribution");
+                logger.info(
+                    "  --translate <package>     Translate package name to current distribution"
+                );
                 logger.info("  --category <name>         Show packages in a category");
                 logger.info("  --list-categories         List all available categories");
                 logger.info("  --search <term>           Find similar packages");
                 logger.info("  --list-packages           Show all canonical package names");
-                logger.info("  --target-distro <distro>  Target distribution for translation");
+                logger.info(
+                    "  --target-distro <distro>  Target distribution for translation"
+                );
                 logger.info("");
                 logger.info(format!("Current target distribution: {}", target_distro));
                 logger.info(format!("Total packages in database: {}", compat.mappings.len()));
